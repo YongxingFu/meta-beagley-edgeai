@@ -31,6 +31,12 @@ overlay 并自动验证其与固件头文件一致。WIC 镜像构建及镜像�
 
 在本目录使用 `git status`、`git diff`、`git log` 查看修改与历史；外层仓库忽略 `sources`，不会代替本仓库保存修改。
 
+## 摄像头与屏幕默认内核
+
+OVX3H / MAX96717 / MAX96716A 摄像头框架和 YXMA023EHD 屏幕框架已统一到内核默认分支 `beagley/6.12`。Yocto 固定提交由 `conf/distro/include/beagley-kernel-local.inc` 管理；两个构建开关默认开启，EdgeAI 镜像显式安装四个驱动模块。摄像头寄存器 profile、硬件 overlay 和屏幕板级电源配置尚待补齐，不代表已验证采集或显示。
+
+详情见 [摄像头构建说明](docs/maxim-gmsl-build.md) 和 [屏幕框架说明](docs/yxma023ehd-bringup.md)。
+
 ## AI 配套与验收
 
 TIDL 模型与运行库的兼容性问题、板上验证结果、DMA-BUF 待查项及后续
