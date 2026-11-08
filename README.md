@@ -27,6 +27,8 @@ overlay 并自动验证其与固件头文件一致。WIC 镜像构建及镜像�
 
 当前尚未配置远端。配置远端并推送后，应在外层 `yocto-build` 的项目清单中记录本仓库 URL 和固定提交，供其他工作区恢复。
 
+项目内核仓库已创建于 `sources/linux-beagley`；分支、基线标签、本地 Yocto 接入及后续远端切换见 [内核仓库指南](docs/linux-beagley.md)。
+
 在本目录使用 `git status`、`git diff`、`git log` 查看修改与历史；外层仓库忽略 `sources`，不会代替本仓库保存修改。
 
 ## AI 配套与验收
