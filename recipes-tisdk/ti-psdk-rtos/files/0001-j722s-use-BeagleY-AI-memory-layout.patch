@@ -1,0 +1,38 @@
+Subject: [PATCH] j722s: fit Edge AI memory into BeagleY-AI RAM
+
+Preserve the wakeup R5F region at 0xa0000000 and move MCU R5F to
+0xa1000000 while retaining main R5F at 0xa2000000. Put the shared
+512 MiB DMA heap immediately after the C7x heaps inside 4 GiB RAM.
+Generate the firmware linker maps and Linux reservations together.
+
+Upstream-Status: Inappropriate [BeagleY-AI board memory layout]
+
+--- a/vision_apps/platform/j722s/rtos/gen_linker_mem_map.py
++++ b/vision_apps/platform/j722s/rtos/gen_linker_mem_map.py
+@@ -113,7 +113,7 @@
+ # virtual lower DDR address range 0x0001_0000_0000
+ #
+ 
+-ddr_mem_addr  = 0xa0000000;
++ddr_mem_addr  = 0xa1000000;
+ ddr_mem_size  = 1*GB + 448*MB; # Last 64MB is used by Linux
+ 
+ ddr_mem_addr_hi_phys = 0x880000000;
+@@ -164,7 +164,7 @@
+ mcu1_0_ddr_addr = mcu1_0_ddr_ipc_tracebuf_addr + linux_ddr_ipc_trace_size;
+ mcu1_0_ddr_size = 16*MB - (mcu1_0_ddr_addr-mcu1_0_ddr_ipc_addr);
+ 
+-mcu2_0_ddr_ipc_addr = mcu1_0_ddr_addr + mcu1_0_ddr_size + 16*MB;
++mcu2_0_ddr_ipc_addr = mcu1_0_ddr_addr + mcu1_0_ddr_size;
+ mcu2_0_ddr_resource_table_addr = mcu2_0_ddr_ipc_addr + linux_ddr_ipc_size;
+ mcu2_0_ddr_ipc_tracebuf_addr = mcu2_0_ddr_resource_table_addr + linux_ddr_resource_table_size;
+ mcu2_0_ddr_addr = mcu2_0_ddr_ipc_tracebuf_addr + linux_ddr_ipc_trace_size;
+@@ -286,7 +286,7 @@
+ 
+ # Shared memory allocation for DMA Buffer File Descriptor (FD) carveout.
+ # This memory is located in high memory, used by OPENVX, and is both CACHEABLE and SHAREABLE.
+-ddr_shared_mem_addr_phys  = 0x900000000;
++ddr_shared_mem_addr_phys  = 0x8a0000000;
+ 
+ #
+ # Create memory section based on addr and size defined above, including

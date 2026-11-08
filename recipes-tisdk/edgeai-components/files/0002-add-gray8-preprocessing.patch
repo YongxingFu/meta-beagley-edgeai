@@ -1,0 +1,47 @@
+Subject: [PATCH] Add single-channel image preprocessing
+
+Upstream-Status: Inappropriate [SDK component compatibility]
+
+--- a/include/edgeai_dl_pre_proc_armv8_utils.h
++++ b/include/edgeai_dl_pre_proc_armv8_utils.h
+@@ -126,6 +126,8 @@
+ 
+ }dlPreProcessImageParams;
+ 
++void dlPreProcess_GRAY8_image(dlPreProcessImageParams *prms);
++
+ void dlPreProcess_RGB_image
+ (
+     dlPreProcessImageParams *prms
+--- a/src/edgeai_dl_pre_proc_armv8_utils.c
++++ b/src/edgeai_dl_pre_proc_armv8_utils.c
+@@ -100,6 +100,29 @@
+ }
+ #endif
+ 
++/* Normalize a single-channel image, respecting input and tensor row strides. */
++void dlPreProcess_GRAY8_image(dlPreProcessImageParams *prms)
++{
++    const uint8_t *input = (const uint8_t *)prms->in_img_target_ptr[0];
++    uint32_t y, x;
++    for (y = 0; y < prms->input_height; ++y) {
++        for (x = 0; x < prms->input_width; ++x) {
++            float value = (input[y * prms->in_stride_y + x] - prms->mean[0]) * prms->scale[0];
++            uint32_t index = y * (prms->channel_order == DL_PRE_PROC_ARMV8_CHANNEL_ORDER_NHWC ? prms->output_dimensions[0] * prms->output_dimensions[1] : prms->output_dimensions[0]) + x;
++            switch (prms->tensor_data_type) {
++            case 0x002: ((int8_t *)prms->out_tensor_target_ptr)[index] = (int8_t)value; break;
++            case 0x003: ((uint8_t *)prms->out_tensor_target_ptr)[index] = (uint8_t)value; break;
++            case 0x004: ((int16_t *)prms->out_tensor_target_ptr)[index] = (int16_t)value; break;
++            case 0x005: ((uint16_t *)prms->out_tensor_target_ptr)[index] = (uint16_t)value; break;
++            case 0x006: ((int32_t *)prms->out_tensor_target_ptr)[index] = (int32_t)value; break;
++            case 0x007: ((uint32_t *)prms->out_tensor_target_ptr)[index] = (uint32_t)value; break;
++            case 0x00a: ((float *)prms->out_tensor_target_ptr)[index] = value; break;
++            default: return;
++            }
++        }
++    }
++}
++
+ void dlPreProcess_RGB_image
+ (
+     dlPreProcessImageParams *prms

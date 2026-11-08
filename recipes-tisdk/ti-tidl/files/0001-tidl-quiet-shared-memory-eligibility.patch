@@ -1,0 +1,32 @@
+Subject: [PATCH] Treat shared-memory eligibility as a quiet lookup
+
+Upstream-Status: Inappropriate [BeagleY-AI integration]
+
+--- a/arm-tidl/rt/src/tidl_rt_utils.c
++++ b/arm-tidl/rt/src/tidl_rt_utils.c
+@@ -174,10 +174,23 @@
+   }
+ }
+ 
++#if defined(__linux__) && defined(__aarch64__)
++/* Weak reference keeps compatibility with an unmodified Vision Apps library. */
++extern uint32_t appMemTryGetDmaBufFd(void *ptr, volatile uint32_t *offset) __attribute__((weak));
++#endif
++
+ int32_t TIDLRT_isSharedMem(void *ptr)
+ {
+-    uint64_t fd;
+-    void *phyAddr;
++#if defined(__linux__) && defined(__aarch64__)
++    uint32_t offset = 0;
++    if (appMemTryGetDmaBufFd != NULL &&
++        appMemTryGetDmaBufFd(ptr, &offset) == UINT32_MAX)
++    {
++        return 0;
++    }
++#endif
++    uint64_t fd = UINT64_MAX;
++    void *phyAddr = NULL;
+     int32_t status;
+     int32_t tivx_mem_status = tivxMemTranslateVirtAddr(ptr, &fd, &phyAddr);
+     if((phyAddr == NULL) || (tivx_mem_status == -1))

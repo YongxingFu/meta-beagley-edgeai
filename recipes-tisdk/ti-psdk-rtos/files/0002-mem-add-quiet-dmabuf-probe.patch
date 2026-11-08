@@ -1,0 +1,49 @@
+Subject: [PATCH] Treat shared-memory eligibility as a quiet lookup
+
+Upstream-Status: Inappropriate [BeagleY-AI integration]
+
+--- a/app_utils/utils/mem/src/app_mem_linux.c
++++ b/app_utils/utils/mem/src/app_mem_linux.c
+@@ -484,7 +484,7 @@
+     return(status);
+ }
+ 
+-uint32_t appMemGetDmaBufFd(void *virPtr, volatile uint32_t *dmaBufFdOffset)
++static uint32_t appMemLookupDmaBufFd(void *virPtr, volatile uint32_t *dmaBufFdOffset, bool report_error)
+ {
+     app_mem_obj_t *obj = &g_app_mem_obj;
+     int dmaBufFd = -1;
+@@ -526,12 +526,12 @@
+         (void)pthread_mutex_unlock(&heap->list_mutex);
+     }
+ 
+-    if (dmaBufFd < 0)
++    if ((dmaBufFd < 0) && report_error)
+     {
+         appLogPrintf("MEM: ERROR: Failed to get dmaBufFd for virtPtr %p !!!\n", virPtr);
+         appLogPrintf("MEM: ERROR: Buffer may be APP_MEM_HEAP_DDR (local-only, not DMA-heap backed) !!!\n");
+     }
+-    else
++    else if (dmaBufFd >= 0)
+     {
+         #ifdef APP_MEM_DEBUG
+         appLogPrintf("MEM: Exported dmaBufFd %d @ offset = %d bytes !!!\n", dmaBufFd, *dmaBufFdOffset);
+@@ -539,6 +539,18 @@
+     }
+ 
+     return (uint32_t)(dmaBufFd);
++}
++
++
++/* An unregistered CPU pointer is expected during zero-copy eligibility checks. */
++uint32_t appMemTryGetDmaBufFd(void *virPtr, volatile uint32_t *dmaBufFdOffset)
++{
++    return appMemLookupDmaBufFd(virPtr, dmaBufFdOffset, false);
++}
++
++uint32_t appMemGetDmaBufFd(void *virPtr, volatile uint32_t *dmaBufFdOffset)
++{
++    return appMemLookupDmaBufFd(virPtr, dmaBufFdOffset, true);
+ }
+ 
+ int32_t appMemTranslateDmaBufFd(uint32_t dmaBufFd, uint32_t size, uint64_t *virtPtr, uint64_t *phyPtr)

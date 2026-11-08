@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
+/dts-v1/;
+/plugin/;
+
+/* Keep the Beagle wakeup R5F reservation at 0xa0000000 unchanged. */
+&mcu_r5fss0_core0_dma_memory_region { status = "disabled"; };
+&mcu_r5fss0_core0_memory_region { status = "disabled"; };
+&main_r5fss0_core0_dma_memory_region { status = "disabled"; };
+&main_r5fss0_core0_memory_region { status = "disabled"; };
+&c7x_0_dma_memory_region { status = "disabled"; };
+&c7x_0_memory_region { status = "disabled"; };
+&c7x_1_dma_memory_region { status = "disabled"; };
+&c7x_1_memory_region { status = "disabled"; };
+&rtos_ipc_memory_region { status = "disabled"; };
+
+&reserved_memory {
+    #address-cells = <2>;
+    #size-cells = <2>;
+#include "beagley-edgeai-memory-map.dtsi"
+};
+
+&mcu_r5fss0_core0 {
+    memory-region = <&vision_apps_mcu_r5fss0_core0_dma_memory_region>,
+                    <&vision_apps_mcu_r5fss0_core0_memory_region>;
+};
+&main_r5fss0_core0 {
+    memory-region = <&vision_apps_main_r5fss0_core0_dma_memory_region>,
+                    <&vision_apps_main_r5fss0_core0_memory_region>;
+};
+&c7x_0 {
+    memory-region = <&vision_apps_c71_0_dma_memory_region>,
+                    <&vision_apps_c71_0_memory_region>;
+};
+&c7x_1 {
+    memory-region = <&vision_apps_c71_1_dma_memory_region>,
+                    <&vision_apps_c71_1_memory_region>;
+};

@@ -1,0 +1,13 @@
+# Python cache and local editor files
+__pycache__/
+*.py[cod]
+*~
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Local credentials and environment overrides
+.env
+.env.*
+!.env.example

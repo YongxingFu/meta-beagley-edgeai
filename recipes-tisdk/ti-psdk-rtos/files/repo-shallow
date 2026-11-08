@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+command="$1"
+shift
+case "$command" in
+    init)
+        exec repo init --depth=1 --manifest-depth=1 --no-clone-bundle "$@"
+        ;;
+    sync)
+        exec repo sync --current-branch --no-tags --jobs=4 "$@"
+        ;;
+    *)
+        exec repo "$command" "$@"
+        ;;
+esac
