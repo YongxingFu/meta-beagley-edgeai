@@ -1,4 +1,7 @@
-FILESEXTRAPATHS:prepend := "${THISDIR}/../../scripts:"
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:${THISDIR}/../../scripts:"
+BEAGLEY_ENABLE_MAXIM_GMSL ?= "0"
+SRC_URI:append:beagley-ai = "${@bb.utils.contains('BEAGLEY_ENABLE_MAXIM_GMSL', '1', ' file://maxim-gmsl.cfg', '', d)}"
+KERNEL_CONFIG_FRAGMENTS:append:beagley-ai = "${@bb.utils.contains('BEAGLEY_ENABLE_MAXIM_GMSL', '1', ' ${WORKDIR}/maxim-gmsl.cfg', '', d)}"
 SRC_URI:append:beagley-ai = " file://check-memory-map.py"
 DEPENDS:append:beagley-ai = " ti-edgeai-firmware-beagley dtc-native"
 KERNEL_DEVICETREE:append:beagley-ai = " ti/k3-am67a-beagley-ai-edgeai-apps.dtbo"
