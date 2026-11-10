@@ -1,0 +1,36 @@
+From: BeagleY AI integration <noreply@example.com>
+Subject: [PATCH] tiovx: skip TI 2A processing when AE and AWB are disabled
+
+The current postprocess path always invokes TI_2A_wrapper_process(), then
+checks the AE mode afterwards. This prevents a fixed exposure/gain mode
+from bypassing the 2A processing cost and can also fail before reaching
+the explicit-mode check when DCC calibration data is invalid.
+
+Skip the complete 2A postprocess when every sink requests disabled AE and
+AWB. The VISS pipeline continues to produce NV12 using its configured
+static tuning.
+
+Upstream-Status: Inappropriate [BeagleY camera bring-up]
+
+--- a/ext/tiovx/gsttiovxisp.c
++++ b/ext/tiovx/gsttiovxisp.c
+@@ -2251,6 +2251,19 @@
+   self = GST_TIOVX_ISP (miso);
+   sink_pads_list = GST_ELEMENT (miso)->sinkpads;
+ 
++  for (l = sink_pads_list; l != NULL; l = g_list_next (l)) {
++    GstTIOVXIspPad *sink_pad = (GstTIOVXIspPad *) l->data;
++    if (sink_pad->ae_mode != ALGORITHMS_ISS_AE_DISABLED ||
++        sink_pad->awb_mode != ALGORITHMS_ISS_AWB_DISABLED) {
++      break;
++    }
++  }
++  if (NULL == l) {
++    GST_LOG_OBJECT (self, "AE and AWB disabled; skipping TI 2A processing");
++    ret = TRUE;
++    goto exit;
++  }
++
+   if (postprocess_skip_frames >= ++self->postprocess_iter) {
+     GST_LOG_OBJECT (self, "Skipping postprocess iteration #%d",
+         self->postprocess_iter);

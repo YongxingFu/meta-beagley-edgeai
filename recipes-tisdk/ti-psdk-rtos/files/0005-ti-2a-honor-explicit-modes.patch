@@ -1,0 +1,24 @@
+From: BeagleY AI integration <noreply@example.com>
+Subject: [PATCH] ti-2a: honor explicit manual and disabled modes
+
+Keep host requested manual or disabled modes instead of replacing them
+with auto defaults on every frame.
+
+Upstream-Status: Inappropriate [BeagleY integration]
+
+--- a/imaging/ti_2a_wrapper/src/ti_2a_wrapper.c
++++ b/imaging/ti_2a_wrapper/src/ti_2a_wrapper.c
+@@ -314,8 +314,11 @@
+     uint8_t bIndex  = (uint8_t)obj->p_awb_params->sen_awb_calc_data->blue_index;
+ 
+     tivxMutexLock(itt_aewb_lock[aewb_config->channel_id]);
+-    obj->p_awb_params->mode = aewbCtrlPrms[aewb_config->channel_id].aewb2APrms.awbMode;
+-    obj->p_ae_params->mode = aewbCtrlPrms[aewb_config->channel_id].aewb2APrms.aeMode;
++    /* Respect explicit manual/disabled modes from the host application. */
++    obj->p_awb_params->mode = (aewb_config->awb_mode == ALGORITHMS_ISS_AWB_AUTO) ?
++        aewbCtrlPrms[aewb_config->channel_id].aewb2APrms.awbMode : aewb_config->awb_mode;
++    obj->p_ae_params->mode = (aewb_config->ae_mode == ALGORITHMS_ISS_AE_AUTO) ?
++        aewbCtrlPrms[aewb_config->channel_id].aewb2APrms.aeMode : aewb_config->ae_mode;
+ 
+     if(ALGORITHMS_ISS_AWB_AUTO == obj->p_awb_params->mode)
+     {

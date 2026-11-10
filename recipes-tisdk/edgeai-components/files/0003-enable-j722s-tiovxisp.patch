@@ -1,0 +1,76 @@
+From: BeagleY AI integration <noreply@example.com>
+Subject: [PATCH] tiovx: enable ISP element on J722S
+
+Build and register the existing ISP element for J722S.
+
+Upstream-Status: Inappropriate [BeagleY integration]
+
+--- a/ext/tiovx/meson.build
++++ b/ext/tiovx/meson.build
+@@ -13,11 +13,12 @@
+   'gsttiovxdlcolorconvert.c',
+ ]
+ 
++if SOC == 'am62a' or SOC == 'j722s'
++  gst_tiovx_plugin_sources += ['gsttiovxisp.c']
++endif
++
+ if SOC == 'am62a'
+-  gst_tiovx_plugin_sources += [
+-    'gsttiovxisp.c',
+-    'gsttiovxfc.c'
+-  ]
++  gst_tiovx_plugin_sources += ['gsttiovxfc.c']
+ endif
+ 
+ if SOC == 'j721e' or SOC == 'j721s2' or SOC == 'j784s4' or SOC == 'j722s'
+@@ -49,11 +50,12 @@
+   'gsttiovxdlcolorconvert.h',
+ ]
+ 
++if SOC == 'am62a' or SOC == 'j722s'
++  gst_tiovx_plugin_headers += ['gsttiovxisp.h']
++endif
++
+ if SOC == 'am62a'
+-  gst_tiovx_plugin_headers += [
+-    'gsttiovxisp.h',
+-    'gsttiovxfc.h'
+-  ]
++  gst_tiovx_plugin_headers += ['gsttiovxfc.h']
+ endif
+ 
+ if SOC == 'j721e' or SOC == 'j721s2' or SOC == 'j784s4' or SOC == 'j722s'
+--- a/ext/tiovx/gsttiovx.c
++++ b/ext/tiovx/gsttiovx.c
+@@ -79,8 +79,10 @@
+ #include "gsttiovxdlpreproc.h"
+ #endif
+ 
++#if defined(SOC_AM62A) || defined(SOC_J722S)
++#include "gsttiovxisp.h"
++#endif
+ #if defined(SOC_AM62A)
+-#include "gsttiovxisp.h"
+ #include "gsttiovxfc.h"
+ #endif
+ 
+@@ -110,14 +112,16 @@
+     goto out;
+   }
+ 
+-#if defined(SOC_AM62A)
++#if defined(SOC_AM62A) || defined(SOC_J722S)
+   ret = gst_element_register (plugin, "tiovxisp", GST_RANK_NONE,
+       GST_TYPE_GST_TIOVX_ISP);
+   if (!ret) {
+     GST_ERROR ("Failed to register the tiovxisp element");
+     goto out;
+   }
+-
++#endif
++
++#if defined(SOC_AM62A)
+   ret = gst_element_register (plugin, "tiovxfcvissmsc", GST_RANK_NONE,
+       GST_TYPE_TIOVX_FC_VISS_MSC);
+   if (!ret) {

@@ -1,0 +1,171 @@
+From: BeagleY AI integration <noreply@example.com>
+Subject: [PATCH] tiovx: import v4l2 dmabuf inputs without a CPU copy
+
+The generic validate path copies every non-TIOVX buffer into a TIOVX
+buffer pool. A 1920x1536 RAW12 frame is 5.6 MiB, so this path saturates a
+CPU core in memcpy_neon and limits the full ISP graph to roughly 14 fps.
+
+When the input memory is a dmabuf, register it through tivxMemTranslateFd
+and attach TIOVX raw-image metadata backed by that memory. Cache the
+imported object array per dmabuf fd so V4L2 pool reuse does not consume a
+new TIOVX object descriptor every frame. Keep the copy fallback for other
+allocators or when translation/import is not supported.
+
+Upstream-Status: Inappropriate [BeagleY camera bring-up]
+
+--- a/gst-libs/gst/tiovx/gsttiovxbufferutils.c
++++ b/gst-libs/gst/tiovx/gsttiovxbufferutils.c
+@@ -75,12 +75,134 @@
+ #include "gsttiovxtensormeta.h"
+ #include "gsttiovxutils.h"
+ 
++#include <gst/allocators/gstdmabuf.h>
+ #include <edgeai_arm_neon_utils.h>
+ 
+ static const gsize copy_all_size = -1;
+ 
+ GST_DEBUG_CATEGORY (gst_tiovx_buffer_performance);
+ 
++typedef struct
++{
++  gsize size;
++  vx_object_array array;
++  GstTIOVXRawImageInfo image_info;
++} GstTIOVXImportedDmaBuf;
++
++static GHashTable *imported_dmabuf_cache;
++G_LOCK_DEFINE_STATIC (imported_dmabuf_cache);
++
++static GstBuffer *
++gst_tiovx_buffer_import_dmabuf (GstDebugCategory * category,
++    GstBuffer * in_buffer, vx_reference exemplar)
++{
++  GstBuffer *out_buffer = NULL;
++  GstMemory *memory = NULL;
++  GstTIOVXRawImageMeta *meta = NULL;
++  GstTIOVXImportedDmaBuf *entry = NULL;
++  gsize size = 0;
++  gint fd = -1;
++  guint i = 0;
++  void *virt_addr = NULL;
++  void *phy_addr = NULL;
++
++  g_return_val_if_fail (category, NULL);
++  g_return_val_if_fail (in_buffer, NULL);
++  g_return_val_if_fail (exemplar, NULL);
++
++  if (TIVX_TYPE_RAW_IMAGE != gst_tiovx_get_exemplar_type (exemplar)) {
++    return NULL;
++  }
++
++  if (gst_buffer_n_memory (in_buffer) != 1U) {
++    return NULL;
++  }
++
++  memory = gst_buffer_peek_memory (in_buffer, 0);
++  if (!gst_is_dmabuf_memory (memory)) {
++    return NULL;
++  }
++
++  size = gst_memory_get_sizes (memory, NULL, NULL);
++  if ((0U == size) || (size > G_MAXUINT32)) {
++    return NULL;
++  }
++
++  fd = gst_dmabuf_memory_get_fd (memory);
++  if (fd < 0) {
++    return NULL;
++  }
++
++  out_buffer = gst_buffer_new ();
++  if (NULL == out_buffer) {
++    return NULL;
++  }
++
++  gst_buffer_copy_into (out_buffer, in_buffer,
++      GST_BUFFER_COPY_FLAGS | GST_BUFFER_COPY_TIMESTAMPS, 0, -1);
++  for (i = 0; i < gst_buffer_n_memory (in_buffer); i++) {
++    gst_buffer_append_memory (out_buffer,
++        gst_memory_ref (gst_buffer_peek_memory (in_buffer, i)));
++  }
++
++  G_LOCK (imported_dmabuf_cache);
++  if (NULL == imported_dmabuf_cache) {
++    imported_dmabuf_cache = g_hash_table_new (g_direct_hash, g_direct_equal);
++  }
++
++  entry = g_hash_table_lookup (imported_dmabuf_cache, GINT_TO_POINTER (fd));
++  if ((NULL != entry) && (entry->size != size)) {
++    entry = NULL;
++  }
++
++  if (NULL == entry) {
++    if (VX_SUCCESS !=
++        tivxMemTranslateFd ((uint64_t) fd, (uint32_t) size,
++            &virt_addr, &phy_addr)) {
++      GST_CAT_DEBUG (gst_tiovx_buffer_performance,
++          "Unable to translate dmabuf fd %d for zero-copy import", fd);
++      G_UNLOCK (imported_dmabuf_cache);
++      gst_buffer_unref (out_buffer);
++      return NULL;
++    }
++
++    meta =
++        gst_buffer_add_tiovx_raw_image_meta (out_buffer, exemplar,
++        (guint64) (uintptr_t) virt_addr);
++    if (NULL == meta) {
++      GST_CAT_DEBUG (gst_tiovx_buffer_performance,
++          "Unable to attach raw-image meta for dmabuf fd %d", fd);
++      G_UNLOCK (imported_dmabuf_cache);
++      gst_buffer_unref (out_buffer);
++      return NULL;
++    }
++
++    entry = g_new0 (GstTIOVXImportedDmaBuf, 1);
++    entry->size = size;
++    entry->array = meta->array;
++    entry->image_info = meta->image_info;
++    g_hash_table_insert (imported_dmabuf_cache, GINT_TO_POINTER (fd), entry);
++  } else {
++    meta =
++        (GstTIOVXRawImageMeta *) gst_buffer_add_meta (out_buffer,
++        gst_tiovx_raw_image_meta_get_info (), NULL);
++    if (NULL == meta) {
++      G_UNLOCK (imported_dmabuf_cache);
++      gst_buffer_unref (out_buffer);
++      return NULL;
++    }
++
++    meta->array = entry->array;
++    meta->image_info = entry->image_info;
++  }
++  G_UNLOCK (imported_dmabuf_cache);
++
++  GST_CAT_LOG (gst_tiovx_buffer_performance,
++      "Imported dmabuf fd %d (%" G_GSIZE_FORMAT
++      " bytes) without a CPU copy", fd, size);
++  return out_buffer;
++}
++
+ /* Copies buffer data into the provided pool */
+ static GstBuffer *
+ gst_tiovx_buffer_copy (GstDebugCategory * category, GstBufferPool * pool,
+@@ -374,6 +496,7 @@
+     GstCaps * caps, guint pool_size, gint num_channels)
+ {
+   GstBufferPool *new_pool = NULL;
++  GstBuffer *imported_buffer = NULL;
+   gsize size = 0;
+ 
+   g_return_val_if_fail (category, NULL);
+@@ -427,6 +550,10 @@
+     } else if (NULL != gst_tiovx_get_vx_array_from_buffer (category, exemplar,
+             buffer)) {
+       GST_CAT_LOG (category, "Buffer contains TIOVX data, skipping copy");
++    } else if (NULL != (imported_buffer =
++            gst_tiovx_buffer_import_dmabuf (category, buffer, exemplar))) {
++      GST_CAT_LOG (category, "Buffer contains dmabuf, skipping copy");
++      buffer = imported_buffer;
+     } else {
+       GST_CAT_DEBUG (gst_tiovx_buffer_performance,
+           "Buffer doesn't come from TIOVX, copying the buffer");

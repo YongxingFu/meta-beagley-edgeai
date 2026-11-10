@@ -1,0 +1,20 @@
+From: BeagleY AI integration <noreply@example.com>
+Subject: [PATCH] sensor: add OX03H10 DCC identifier
+
+Identify the BeagleY OX03H10 sensor with its supplied DCC profile.
+
+Upstream-Status: Inappropriate [BeagleY integration]
+
+--- a/src/tiovx_sensor_module.c
++++ b/src/tiovx_sensor_module.c
+@@ -452,6 +452,10 @@ vx_status tiovx_init_sensor(SensorObj *sensorObj, char *objName)
+     {
+         sensorObj->sensorParams.dccId=728;
+     }
++    else if(strcmp(sensorObj->sensor_name, "SENSOR_OX03H10") == 0)
++    {
++        sensorObj->sensorParams.dccId=304;
++    }
+    else
+     {
+         TIOVX_MODULE_ERROR("[SENSOR-MODULE] Invalid sensor name\n");

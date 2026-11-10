@@ -1,0 +1,62 @@
+From: BeagleY AI integration <noreply@example.com>
+Subject: [PATCH] imaging: support the 20-region OX03H10 RGB2RGB profile
+
+The OX03H10 DCC 304 RGB-to-RGB component has 20 regions. Increase the
+generic parser limit and the RGB-to-RGB storage arrays on both the host
+and remote firmware builds. Reject an oversized profile before parsing
+component data so a future DCC cannot silently corrupt adjacent fields.
+
+Upstream-Status: Inappropriate [BeagleY camera tuning]
+
+--- a/imaging/algos/dcc/include/dcc_defs.h
++++ b/imaging/algos/dcc/include/dcc_defs.h
+@@ -60,5 +60,5 @@
+ /* This should be the max of all photospace instance */
+-#define DCC_MAX_PHOTO_SPACE_INST                (10U)
++#define DCC_MAX_PHOTO_SPACE_INST                (20U)
+ 
+ //
+ //  Following enumerated list represents main component/sub-component/algorithm IDs.
+--- a/imaging/algos/dcc/include/idcc.h
++++ b/imaging/algos/dcc/include/idcc.h
+@@ -68,7 +68,7 @@
+ 
+ /*---------------------- data declarations -----------------------------------*/
+ 
+-#define DCC_RGB2RGB1_MAX_PHOTO_SPACE_INST       (10U)
++#define DCC_RGB2RGB1_MAX_PHOTO_SPACE_INST       (20U)
+ #define DCC_NSF4V_MAX_PHOTO_SPACE_INST          (10U)
+ #define DCC_YEE_MAX_PHOTO_SPACE_INST            (10U)
+ #define DCC_DPC_MAX_PHOTO_SPACE_INST            (10U)
+--- a/imaging/algos/dcc/src/parse_data.c
++++ b/imaging/algos/dcc/src/parse_data.c
+@@ -815,6 +815,13 @@
+ 
+         p_bin = dcc_ptrs->p_parpack;
+ 
++        if (dcc_ptrs->num_regions > DCC_RGB2RGB1_MAX_PHOTO_SPACE_INST)
++        {
++            Trace_printf("ipipe_rgb2rgb_dcc_bin_parse : too many regions: %u\n",
++                         dcc_ptrs->num_regions);
++            return (-1);
++        }
++
+         /* LDRA_JUSTIFY_START
+         <metric start> branch <metric end>
+         <justification start> 
+--- a/imaging/ti_2a_wrapper/src/ti_2a_parse_data.c
++++ b/imaging/ti_2a_wrapper/src/ti_2a_parse_data.c
+@@ -815,6 +815,13 @@
+ 
+         p_bin = dcc_ptrs->p_parpack;
+ 
++        if (dcc_ptrs->num_regions > DCC_RGB2RGB1_MAX_PHOTO_SPACE_INST)
++        {
++            Trace_printf("ipipe_rgb2rgb_dcc_bin_parse : too many regions: %u\n",
++                         dcc_ptrs->num_regions);
++            return (-1);
++        }
++
+         /* LDRA_JUSTIFY_START
+         <metric start> branch <metric end>
+         <justification start> 

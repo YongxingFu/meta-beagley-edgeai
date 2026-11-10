@@ -1,4 +1,5 @@
 SUMMARY = "Edge AI R5F and C7x firmware built for BeagleY-AI 4 GiB RAM"
+PR = "r1"
 LICENSE = "TI-TFL & BSD-2-Clause & BSD-3-Clause & MIT & Apache-2.0-with-LLVM-exception & BSL-1.0 & PD"
 LIC_FILES_CHKSUM = "file://psdk_rtos/PROCESSOR_SDK_RTOS_J722S_manifest.html;md5=5590fc0ddeef4970e8a853aeb2d17770"
 
@@ -13,6 +14,7 @@ DEPENDS += "ti-edgeai-c7000-native ti-edgeai-armllvm-native ti-edgeai-sysconfig-
 SRC_URI = " \
     https://dr-download.ti.com/software-development/software-development-kit-sdk/MD-1bSfTnVt5d/11.02.02.04/ti-processor-sdk-rtos-j722s-evm-11_02_02_04.tar.gz \
     file://0001-j722s-use-BeagleY-AI-memory-layout.patch \
+    file://0004-dcc-support-20-photospace-regions.patch \
     file://k3-am67a-beagley-ai-edgeai-apps.dtso \
 "
 SRC_URI[sha256sum] = "c176a4599e8c702bdae6c955c108699ccefbaaf3d1523c530ef60d31c3dd8105"

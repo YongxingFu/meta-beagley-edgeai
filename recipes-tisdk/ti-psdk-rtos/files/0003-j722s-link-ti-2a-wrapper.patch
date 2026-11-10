@@ -1,0 +1,18 @@
+From: BeagleY AI integration <noreply@example.com>
+Subject: [PATCH] vision_apps: link TI 2A wrapper for J722S Edge AI
+
+Expose the TI 2A wrapper needed by the GStreamer ISP element.
+
+Upstream-Status: Inappropriate [BeagleY integration]
+
+--- a/vision_apps/apps/concerto_mpu_inc.mak
++++ b/vision_apps/apps/concerto_mpu_inc.mak
+@@ -191,7 +191,7 @@ ifeq ($(TARGET_OS), LINUX)
+ IMAGING_LIBS += ti_imaging_aealg
+ IMAGING_LIBS += ti_imaging_awbalg
+ 
+-ifeq ($(SOC), am62a)
++ifneq ($(filter am62a j722s,$(SOC)),)
+ ifeq ($(TISDK_IMAGE), edgeai)
+ IMAGING_LIBS += ti_2a_wrapper
+ endif
