@@ -1,0 +1,121 @@
+From: BeagleY AI integration <noreply@example.com>
+Subject: [PATCH] tiovxisp: add OX03H10 AE sensor controls
+
+Use the exposure program and unit conversions from the J722S ADAS OX03H10
+reference implementation. Add a sensor-specific branch so the host TI 2A loop
+no longer falls back to the IMX219 constraints, and forward exposure, analog
+gain, and digital gain to the V4L2 sensor subdevice.
+
+Upstream-Status: Inappropriate [BeagleY integration]
+
+--- a/ext/tiovx/gsttiovxisp.c
++++ b/ext/tiovx/gsttiovxisp.c
+@@ -117,6 +117,7 @@
+ 
+ static const guint exposure_ctrl_id = V4L2_CID_EXPOSURE;
+ static const guint analog_gain_ctrl_id = V4L2_CID_ANALOGUE_GAIN;
++static const guint digital_gain_ctrl_id = V4L2_CID_GAIN;
+ 
+ static const guint postprocess_skip_frames = 1;
+ 
+@@ -1086,6 +1087,8 @@
+ 
+ static int32_t get_ox05b1s_ae_dyn_params (IssAeDynamicParams * p_ae_dynPrms);
+ 
++static int32_t get_ox03h10_ae_dyn_params (IssAeDynamicParams * p_ae_dynPrms);
++
+ static void gst_tiovx_isp_map_2A_values (GstTIOVXISP * self, int exposure_time,
+     int analog_gain, gint32 * exposure_time_mapped,
+     gint32 * analog_gain_mapped);
+@@ -2288,6 +2291,8 @@
+       get_ov2312_ae_dyn_params (&sink_pad->sensor_in_data.ae_dynPrms);
+     } else if (g_strcmp0 (self->sensor_name, "SENSOR_OX05B1S") == 0) {
+       get_ox05b1s_ae_dyn_params (&sink_pad->sensor_in_data.ae_dynPrms);
++    } else if (g_strcmp0 (self->sensor_name, "SENSOR_OX03H10") == 0) {
++      get_ox03h10_ae_dyn_params (&sink_pad->sensor_in_data.ae_dynPrms);
+     } else if (g_strcmp0 (self->sensor_name, "SENSOR_SONY_IMX728_UB971_D3") == 0) {
+       get_imx728_ae_dyn_params (&sink_pad->sensor_in_data.ae_dynPrms);
+     } else {
+@@ -2353,6 +2358,17 @@
+       if (ret_val < 0) {
+         GST_ERROR_OBJECT (self, "Unable to call analog gain ioctl: %d",
+             ret_val);
++        goto close_fd;
++      }
++
++      if (g_strcmp0 (self->sensor_name, "SENSOR_OX03H10") == 0) {
++        control.id = digital_gain_ctrl_id;
++        control.value = ae_awb_result->digital_gain;
++        ret_val = ioctl (fd, VIDIOC_S_CTRL, &control);
++        if (ret_val < 0) {
++          GST_ERROR_OBJECT (self, "Unable to call digital gain ioctl: %d",
++              ret_val);
++        }
+       }
+ 
+     close_fd:
+@@ -2537,6 +2553,51 @@
+   return status;
+ }
+ 
++static int32_t
++get_ox03h10_ae_dyn_params (IssAeDynamicParams * p_ae_dynPrms)
++{
++  int32_t status = -1;
++  uint8_t count = 0;
++
++  g_return_val_if_fail (p_ae_dynPrms, status);
++
++  /* Exposure constraints from the J722S ADAS OX03H10 reference driver. */
++  p_ae_dynPrms->targetBrightnessRange.min = 45;
++  p_ae_dynPrms->targetBrightnessRange.max = 55;
++  p_ae_dynPrms->targetBrightness = 50;
++  p_ae_dynPrms->threshold = 2;
++  p_ae_dynPrms->enableBlc = 0;
++  p_ae_dynPrms->exposureTimeStepSize = 1;
++
++  p_ae_dynPrms->exposureTimeRange[count].min = 2000;
++  p_ae_dynPrms->exposureTimeRange[count].max = 10000;
++  p_ae_dynPrms->analogGainRange[count].min = 1228;
++  p_ae_dynPrms->analogGainRange[count].max = 1228;
++  p_ae_dynPrms->digitalGainRange[count].min = 256;
++  p_ae_dynPrms->digitalGainRange[count].max = 256;
++  count++;
++
++  p_ae_dynPrms->exposureTimeRange[count].min = 10000;
++  p_ae_dynPrms->exposureTimeRange[count].max = 10000;
++  p_ae_dynPrms->analogGainRange[count].min = 1228;
++  p_ae_dynPrms->analogGainRange[count].max = 15872;
++  p_ae_dynPrms->digitalGainRange[count].min = 256;
++  p_ae_dynPrms->digitalGainRange[count].max = 256;
++  count++;
++
++  p_ae_dynPrms->exposureTimeRange[count].min = 10000;
++  p_ae_dynPrms->exposureTimeRange[count].max = 10000;
++  p_ae_dynPrms->analogGainRange[count].min = 15872;
++  p_ae_dynPrms->analogGainRange[count].max = 15872;
++  p_ae_dynPrms->digitalGainRange[count].min = 256;
++  p_ae_dynPrms->digitalGainRange[count].max = 768;
++  count++;
++
++  p_ae_dynPrms->numAeDynParams = count;
++  status = 0;
++  return status;
++}
++
+ static void
+ gst_tiovx_isp_map_2A_values (GstTIOVXISP * self, int exposure_time,
+     int analog_gain, gint32 * exposure_time_mapped, gint32 * analog_gain_mapped)
+@@ -2580,6 +2641,12 @@
+ } else if (g_strcmp0 (self->sensor_name, "SENSOR_OX05B1S") == 0) {
+     *exposure_time_mapped = (int) ((double)exposure_time * 2128 * 60 / 1000000 + 0.5);
+     *analog_gain_mapped = analog_gain / 64;
++  } else if (g_strcmp0 (self->sensor_name, "SENSOR_OX03H10") == 0) {
++    /* HTS is 2047 SCLK cycles at the ADAS reference's 100 MHz SCLK. */
++    *exposure_time_mapped = exposure_time * 100 / 2047;
++    *exposure_time_mapped = CLAMP (*exposure_time_mapped, 2, 802);
++    *analog_gain_mapped = (analog_gain + 32) / 64;
++    *analog_gain_mapped = CLAMP (*analog_gain_mapped, 19, 248);
+   } else {
+     GST_ERROR_OBJECT (self, "Unknown sensor: %s", self->sensor_name);
+   }

@@ -1,0 +1,72 @@
+From: BeagleY AI integration <noreply@example.com>
+Subject: [PATCH] gsttiovxisp: account for OX03H10 sensor pre-WDR WB
+
+The OX03H10 ADAS tuning applies fixed HCG white-balance gains in the sensor
+before its WDR merge. Tell TI AWB about those gains and seed its previous-gain
+state from the HCG register values. Keep this state fixed while AWB output is
+applied by VISS, so it continues to describe sensor-side gain. Guard the
+wrapper's pre-gain normalization against zero values as a final safety net.
+
+Upstream-Status: Inappropriate [BeagleY integration]
+
+--- a/ext/tiovx/gsttiovxisp.c
++++ b/ext/tiovx/gsttiovxisp.c
+@@ -1715,6 +1715,25 @@
+       goto out;
+     }
+ 
++    if (g_strcmp0 (self->sensor_name, "SENSOR_OX03H10") == 0) {
++      awb_calc_data_t *calc =
++          sink_pad->ti_2a_wrapper.p_awb_params->sen_awb_calc_data;
++      tivx_ae_awb_params_t *prev =
++          &sink_pad->ti_2a_wrapper.ae_awb_result_prev;
++
++      /* HCG register values: B=0x07be, G=0x0400, R=0x0876 (Q10).
++       * TI AWB uses Q9 gains with 512 representing unity. */
++      sink_pad->ti_2a_wrapper.sensor_pre_wb_gain = 1;
++      prev->wb_gains[calc->red_index] = 1083;
++      prev->wb_gains[calc->green1_index] = 512;
++      prev->wb_gains[calc->green2_index] = 512;
++      prev->wb_gains[calc->blue_index] = 991;
++      prev->wb_offsets[calc->red_index] = 0;
++      prev->wb_offsets[calc->green1_index] = 0;
++      prev->wb_offsets[calc->green2_index] = 0;
++      prev->wb_offsets[calc->blue_index] = 0;
++    }
++
+     GST_INFO_OBJECT (sink_pad,
+         "TI 2A parameters:\n"
+         "\tSensor DCC ID: %d\n"
+@@ -2322,6 +2341,31 @@
+       goto out;
+     }
+ 
++    if (g_strcmp0 (self->sensor_name, "SENSOR_OX03H10") == 0) {
++      if (g_strcmp0 (g_getenv ("OX03H10_AWB_UNITY"), "1") == 0) {
++        guint gain_index;
++
++        for (gain_index = 0; gain_index < 4; gain_index++) {
++          ae_awb_result->wb_gains[gain_index] = 512;
++        }
++      }
++
++      if (g_getenv ("OX03H10_AWB_FORCE_CT") != NULL) {
++        ae_awb_result->color_temperature =
++            g_ascii_strtoull (g_getenv ("OX03H10_AWB_FORCE_CT"), NULL, 10);
++      }
++
++      GST_INFO_OBJECT (sink_pad,
++          "OX03H10 AWB: R=%d Gr=%d Gb=%d B=%d valid=%d converged=%d temp=%d",
++          ae_awb_result->wb_gains[0],
++          ae_awb_result->wb_gains[1],
++          ae_awb_result->wb_gains[2],
++          ae_awb_result->wb_gains[3],
++          ae_awb_result->awb_valid,
++          ae_awb_result->awb_converged,
++          ae_awb_result->color_temperature);
++    }
++
+     GST_LOG_OBJECT (sink_pad, "Exposure time output from TI 2A library: %d",
+         sink_pad->sensor_out_data.aePrms.exposureTime[0]);
+     GST_LOG_OBJECT (sink_pad, "Analog gain output from TI 2A library: %d",
+         sink_pad->sensor_out_data.aePrms.analogGain[0]);

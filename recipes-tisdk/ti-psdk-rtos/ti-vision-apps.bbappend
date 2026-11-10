@@ -12,6 +12,7 @@ SRC_URI:append:beagley-ai = " file://0002-mem-add-quiet-dmabuf-probe.patch;patch
 SRC_URI:append:beagley-ai = " file://0003-j722s-link-ti-2a-wrapper.patch;patchdir=${WORKDIR}/repo"
 SRC_URI:append:beagley-ai = " file://0004-dcc-support-20-photospace-regions.patch;patchdir=${WORKDIR}/repo"
 SRC_URI:append:beagley-ai = " file://0005-ti-2a-honor-explicit-modes.patch;patchdir=${WORKDIR}/repo"
+SRC_URI:append:beagley-ai = " file://0006-ox03h10-pre-wb-zero-guard.patch;patchdir=${WORKDIR}/repo"
 SRC_URI:append:beagley-ai = " \
     file://dcc/ox03h10/wdr/dcc_2a_wdr_304.bin \
     file://dcc/ox03h10/wdr/dcc_viss_wdr_304.bin \
