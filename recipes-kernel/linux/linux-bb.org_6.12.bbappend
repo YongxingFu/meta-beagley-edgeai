@@ -1,11 +1,13 @@
 FILESEXTRAPATHS:prepend := "${THISDIR}/files:${THISDIR}/../../scripts:"
 require yxma023ehd.inc
 BEAGLEY_ENABLE_MAXIM_GMSL_LEGACY ?= "1"
+BEAGLEY_ENABLE_OX03H10_CAMERA ?= "1"
 SRC_URI:append:beagley-ai = "${@bb.utils.contains('BEAGLEY_ENABLE_MAXIM_GMSL_LEGACY', '1', ' file://beagley-gmsl-legacy.cfg', '', d)}"
 KERNEL_CONFIG_FRAGMENTS:append:beagley-ai = "${@bb.utils.contains('BEAGLEY_ENABLE_MAXIM_GMSL_LEGACY', '1', ' ${WORKDIR}/beagley-gmsl-legacy.cfg', '', d)}"
 SRC_URI:append:beagley-ai = " file://check-memory-map.py"
 DEPENDS:append:beagley-ai = " ti-edgeai-firmware-beagley dtc-native"
 KERNEL_DEVICETREE:append:beagley-ai = " ti/k3-am67a-beagley-ai-edgeai-apps.dtbo"
+KERNEL_DEVICETREE:append:beagley-ai = "${@bb.utils.contains('BEAGLEY_ENABLE_OX03H10_CAMERA', '1', ' ti/k3-am67a-beagley-ai-ox03h10-gmsl.dtbo', '', d)}"
 KERNEL_DTC_FLAGS:append:beagley-ai = " -@"
 
 do_configure:prepend:beagley-ai() {

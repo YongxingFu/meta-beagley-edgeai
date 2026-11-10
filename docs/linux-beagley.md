@@ -95,6 +95,8 @@ SRCREV:beagley-ai = "<已推送的完整提交 SHA>"
 
 ## 摄像头与屏幕统一默认分支（2026-11-08）
 
-默认 `beagley/6.12` 现已纳入 OVX3H、MAX96716A、MAX96717 固定拓扑摄像头框架和 YXMA023EHD panel 框架。统一提交为 `62c0095f2d1634191815410250fdc1cc0e67706a`，Yocto 本地源的固定版本已同步。旧 feature worktree 保留作历史对照，后续修改在默认分支提交。
+提交 `62c0095f2d16` 最初以 OVX3H 框架名纳入 MAX96716A/MAX96717 固定拓扑；寄存器 CSV 标明的实际传感器是 OX03H10。后续驱动按 OX03H10 命名，模式已配置为 1920x1536 BGGR RAW12 60 fps，并新增 CSI0 GMSL overlay；CSV 的 VTS=814 与图像高度不符，需硬件确认。旧 feature worktree 保留作历史对照，后续修改在默认分支提交。
 
-两个驱动构建开关默认启用，EdgeAI 镜像显式包含四个模块。屏幕 DTBO 源码由内核仓库维护，不再由 layer 注入；硬件节点仍禁用。摄像头寄存器 profile、CSI0 硬件 overlay 和屏幕电源/复位/MUX 配置待补齐。
+两个驱动构建开关默认启用，EdgeAI 镜像显式包含四个模块。屏幕 DTBO 源码由内核仓库维护，不再由 layer 注入；硬件节点仍禁用。摄像头寄存器 profile 与 CSI0 overlay 已接入；当前 MAX96717 基线及验收范围见 [摄像头构建说明](maxim-gmsl-build.md)。
+
+2026-11-10：将已验证的 MAX96717 修复 `14dbaed8e5e2` 合入主仓库，得到 `0437cebcb1316ba9b7046fc147ce7daa24cced0d`，并同步 Yocto 固定提交。layer 不再重复应用 serializer 实验补丁。该组合保留主分支已有 OLED 修改，完整镜像待重新构建验收。

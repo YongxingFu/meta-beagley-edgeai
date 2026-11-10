@@ -33,7 +33,7 @@ overlay 并自动验证其与固件头文件一致。WIC 镜像构建及镜像�
 
 ## 摄像头与屏幕默认内核
 
-OVX3H / MAX96717 / MAX96716A 摄像头框架和 YXMA023EHD 屏幕框架已统一到内核默认分支 `beagley/6.12`。Yocto 固定提交由 `conf/distro/include/beagley-kernel-local.inc` 管理；两个构建开关默认开启，EdgeAI 镜像显式安装四个驱动模块。摄像头寄存器 profile、硬件 overlay 和屏幕板级电源配置尚待补齐，不代表已验证采集或显示。
+OX03H10 / MAX96717 / MAX96716A 摄像头驱动和 YXMA023EHD 屏幕支持位于内核默认分支 `beagley/6.12`。Yocto 固定提交为 `0437cebcb1316ba9b7046fc147ce7daa24cced0d`。摄像头配置为 1920×1536 BGGR RAW12 60 fps，默认安装模块并启用 CSI0 overlay。2026-11-10 已验证清理后的 MAX96717 模块：RAW 600 帧约 59.84 fps，VISS 1800 帧约 58.50 fps；HDMI CPU 转换显示约 8.5 fps。自动 AE/AWB 和颜色标定尚未验收；完整镜像还需重新构建并实板验证。
 
 详情见 [摄像头构建说明](docs/maxim-gmsl-build.md) 和 [屏幕框架说明](docs/yxma023ehd-bringup.md)。
 
@@ -101,6 +101,8 @@ TI Git 的完整克隆在当前网络下返回 HTTP 501。`scripts/prime-ti-sour
 本地分支引用指向该固定提交，因此不能用它验证提交是否属于上游分支历史。
 构建脚本 `scripts/build-image.sh` 会记录日志、禁止系统睡眠并使用增量缓存。
 若构建失败，先检查日志中的 `ERROR:`，修复后可再次运行该脚本。
+
+此浅获取解决的是 TI SDK 部分仓库无法完整克隆的问题：脚本对每个指定的 TI 仓库和固定提交运行 `git fetch --depth=1`，再将对象放入 Yocto 的 `downloads/git2` 缓存。内核仓库采用不同方式：`linux-beagley` 从本机现有的完整 BeagleBoard Linux 缓存独立克隆，当前不是浅仓库。
 
 ## 2026-11-08 构建结果
 
