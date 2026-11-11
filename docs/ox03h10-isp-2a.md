@@ -1,10 +1,15 @@
-# OX03H10 ISP/2A integration baseline
+# OX03H10 ISP/2A integration handoff
 
-This note records the OX03H10 ISP and 2A parameters inherited from the J722S
-ADAS SDK debugging baseline. That baseline used the same OX03H10 sensor and
-J722S VPAC ISP, but its ADAS camera-service control path is not present in the
-BeagleY-AI Edge AI stack. Sensor parameters are therefore used as the reference;
-the control path is adapted to V4L2 and `edgeai-gst-plugins`.
+This note records the OX03H10 ISP and 2A parameters carried over from the J722S
+ADAS SDK debugging baseline and the planned BeagleY-AI adaptation. The reference
+uses the same sensor and J722S VPAC ISP, but its ADAS camera-service control
+path is not present in the BeagleY-AI Edge AI stack. Treat inherited register
+behavior and tuning as a reference to validate on the target, not as proof that
+the Linux controls or closed-loop 2A are working on this board.
+
+The items below describe implementation inputs and code paths. Board-level
+validation of sensor control writes, image response, AE convergence, and AWB
+color response remains open unless a result is explicitly recorded here.
 
 ## DCC profile
 
@@ -56,7 +61,7 @@ The Linux driver writes both exposure channels together:
 - SPD/LOFIC: `0x3541`, `0x3542`
 
 HCG is the dynamic AE object. SPD exposure follows HCG. LCG and LOFIC analog
-gains stay at the fixed values from the verified initialization sequence.
+gains stay at the fixed values from the ADAS reference initialization sequence.
 
 ### Analog gain
 
@@ -69,9 +74,9 @@ The sensor uses a 4.4 encoding: 16 is 1x and 248 is 15.5x.
 
 ### Digital/inverse gain
 
-The ADAS implementation uses the four register pairs at `0x5da0` through
+The ADAS reference implementation uses the four register pairs at `0x5da0` through
 `0x5da7` as an equal per-channel digital-gain path. The OX03H10 datasheet names
-these registers manual AWB inverse gain. Preserve the verified ADAS behavior and
+these registers manual AWB inverse gain. Preserve this reference behavior and
 set all four pairs to the same converted value; do not reinterpret them as the
 exposure-channel digital gain registers merely from the datasheet label. Q8 input
 is converted to the register's Q10 form with `value = gain * 2`, then split as
@@ -83,30 +88,41 @@ corresponding channel variants) are not used by this first AE port.
 
 ## Current-stack adaptation
 
-`gsttiovxisp` now recognizes `SENSOR_OX03H10`, installs the ADAS exposure
-program, and maps TI 2A output to the Linux controls:
+The `edgeai-gst-plugins` patch set adds `SENSOR_OX03H10` handling, the ADAS
+exposure program, and mappings from TI 2A output to Linux controls:
 
 - `V4L2_CID_EXPOSURE`: double-row exposure units
 - `V4L2_CID_ANALOGUE_GAIN`: sensor 4.4 gain code
 - `V4L2_CID_GAIN`: Q8 digital/inverse gain
 
-Automatic mode must pass the OX03H10 subdevice to the ISP sink pad with
-`sink_0::device=...`. `ox03h10-stream -m auto` auto-detects an `ox03h10`
-`/dev/v4l-subdev*`; use `-s` or `SENSOR_SUBDEV` to override it. Fixed-parameter
-mode continues to disable host AE/AWB and does not require the subdev path.
+Automatic mode passes the selected subdevice to the ISP sink pad with
+`sink_0::device=...`. `ox03h10-stream` can select a unique `/dev/v4l-subdev*`
+candidate by the presence of `exposure`, `analogue_gain`, and `gain` controls.
+This is only a control-presence heuristic: it does not identify the sensor, so
+verify the selected device against `media-ctl -p` and use `-s` or
+`SENSOR_SUBDEV` to select it explicitly when possible. A unique candidate may
+still belong to another sensor. Fixed-parameter mode disables host AE/AWB and
+does not need the subdevice path.
 
 ## Validation order
 
-1. List controls on the OX03H10 subdev and verify the three ranges.
-2. With streaming stopped or active, set exposure and both gains, then read back
-   sensor registers `0x3501/02`, `0x3541/42`, `0x3508/09`, and `0x5da0..0x5da8`.
-3. Keep AWB disabled and sweep exposure 2, 5, 10, and 15 ms.
-4. Keep exposure fixed and sweep analog gain 1.2x, 4x, 8x, and 15.5x.
-5. Enable AE only after fixed-step behavior is monotonic and stable.
+1. Confirm subdevice identity through the media graph, then list controls and
+   verify the ranges against the driver implementation.
+2. With streaming stopped, change one control at a time and confirm register
+   readback using the board's supported register access method. The addresses
+   listed above are inherited from the ADAS reference; confirm their meaning
+   for the active sensor mode before interpreting readback.
+3. Keep AWB disabled and sweep exposure 2, 5, 10, and 15 ms; record requested
+   control values, register values, and captured image response.
+4. Keep exposure fixed and sweep analog gain 1.2x, 4x, 8x, and 15.5x; record
+   the same evidence and check for clipping or non-monotonic response.
+5. Enable AE only after fixed-step behavior is repeatable and monotonic. Record
+   convergence and stability separately from successful pipeline startup.
 
-The TI 2A wrapper receives `sensor_pre_wb_gain=1` for OX03H10. Its previous
+The TI 2A wrapper code passes `sensor_pre_wb_gain=1` for OX03H10. Its previous
 gains are initialized from the sensor's HCG WB registers (converted from Q10 to
 TI's Q9 convention: B=991, G=512, R=1083). The state remains the sensor-side
 gain because this port continues to apply AWB results in VISS. A zero-divisor
 fallback to unity is also present in the wrapper. Automatic AWB still needs
-board validation with a neutral target before being considered complete.
+board validation with a neutral target before being considered complete. No
+closed-loop AE/AWB result is established by this handoff note alone.

@@ -19,7 +19,8 @@ Options:
 
 Environment overrides:
   VIDEO_DEVICE  Default /dev/video3
-  SENSOR_SUBDEV Default: auto-detect /dev/v4l-subdev* for AE/AWB modes
+  SENSOR_SUBDEV Default: find a unique subdev with exposure, analogue_gain,
+                and gain controls for AE/AWB modes (heuristic only)
   MEDIA_DEVICE  Default /dev/media0; formats are propagated before capture
   DCC_VISS_FILE Default /opt/imaging/ox03h10/wdr/dcc_viss_wdr_304.bin
   DCC_2A_FILE   Default /opt/imaging/ox03h10/wdr/dcc_2a_wdr_304.bin
@@ -86,21 +87,27 @@ for required in "$VIDEO_DEVICE" "$DCC_VISS_FILE" "$DCC_2A_FILE"; do
     fi
 done
 
-find_sensor_subdev() {
-    local dev
+find_control_candidate() {
+    local dev controls
+    local -a candidates=()
     for dev in /dev/v4l-subdev*; do
         [[ -c "$dev" ]] || continue
-        # Subdevice device queries do not report a driver name on this
-        # kernel. The exposure and analogue-gain controls identify this driver more reliably.
-        if v4l2-ctl -d "$dev" -l 2>/dev/null |
-                grep -q '[[:space:]]exposure ' &&
-                v4l2-ctl -d "$dev" -l 2>/dev/null |
-                grep -q '[[:space:]]analogue_gain '; then
-            printf '%s\n' "$dev"
-            return 0
+        # Control presence narrows the candidates, but does not prove sensor identity.
+        controls="$(v4l2-ctl -d "$dev" -l 2>/dev/null)" || continue
+        if grep -q '[[:space:]]exposure ' <<<"$controls" &&
+                grep -q '[[:space:]]analogue_gain ' <<<"$controls" &&
+                grep -q '[[:space:]]gain ' <<<"$controls"; then
+            candidates+=("$dev")
         fi
     done
-    return 1
+
+    if (( ${#candidates[@]} != 1 )); then
+        printf 'Expected one subdev matching exposure/analogue_gain/gain controls; found %d. Pass -s or SENSOR_SUBDEV explicitly.\n' \
+            "${#candidates[@]}" >&2
+        return 1
+    fi
+
+    printf '%s\n' "${candidates[0]}"
 }
 
 configure_media_pipeline() {
@@ -125,10 +132,10 @@ case "$AE_AWB_MODE" in
         ;;
     ae|awb|auto)
         if [[ -z "$SENSOR_SUBDEV" ]]; then
-            SENSOR_SUBDEV="$(find_sensor_subdev)" || {
-                echo "Unable to find ox03h10 subdev; pass -s or SENSOR_SUBDEV" >&2
+            SENSOR_SUBDEV="$(find_control_candidate)" || {
                 exit 1
             }
+            echo "Selected $SENSOR_SUBDEV by control heuristic; verify it is the OX03H10 subdev (pass -s to select explicitly)." >&2
         fi
         if [[ ! -c "$SENSOR_SUBDEV" ]]; then
             echo "Sensor subdev is not a character device: $SENSOR_SUBDEV" >&2
