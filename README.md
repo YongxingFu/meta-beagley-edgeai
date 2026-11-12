@@ -33,7 +33,7 @@ overlay 并自动验证其与固件头文件一致。WIC 镜像构建及镜像�
 
 ## 摄像头与屏幕默认内核
 
-OX03H10 / MAX96717 / MAX96716A 摄像头驱动和 YXMA023EHD 屏幕支持位于内核默认分支 `beagley/6.12`。Yocto 固定提交为 `0437cebcb1316ba9b7046fc147ce7daa24cced0d`。摄像头配置为 1920×1536 BGGR RAW12 60 fps，默认安装模块并启用 CSI0 overlay。2026-11-10 已验证清理后的 MAX96717 模块：RAW 600 帧约 59.84 fps，VISS 1800 帧约 58.50 fps；HDMI CPU 转换显示约 8.5 fps。自动 AE/AWB 和颜色标定尚未验收；完整镜像还需重新构建并实板验证。
+OX03H10 / MAX96717 / MAX96716A 摄像头驱动和当前 YX50093ACT LVDS 屏幕支持位于内核默认分支 `beagley/6.12`。Yocto 固定提交为 `380dd018bcd73f7b23b75f937495c85739f8dc71`；已有 `build/conf/local.conf` 的旧覆盖值也必须同步更新。摄像头配置为 1920×1536 BGGR RAW12 60 fps，默认安装模块并启用 `ox03h10-legacy-400` CSI0 overlay 与 `yx50093act` OLDI/LVDS overlay。该 camera overlay 的 DES 端声明 400 MHz，sensor 端声明 750 MHz，DES 的固定寄存器 `0x0320=0x2c`；设备树声明不是实际速率测量。2026-11-12 冷启动后，RAW/ISP 采集、LVDS 实时预览和 DSS 硬件缩放路径已复测正常；长时间显示稳定性与自动 AE/AWB、颜色标定仍需专项验收。
 
 详情见 [摄像头构建说明](docs/maxim-gmsl-build.md) 和 [屏幕框架说明](docs/yxma023ehd-bringup.md)。
 

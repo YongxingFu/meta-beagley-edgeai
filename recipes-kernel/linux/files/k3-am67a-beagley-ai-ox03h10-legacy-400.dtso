@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
+/* Board-tested CSI0 profile: DES endpoint 400 MHz; sensor endpoint 750 MHz. */
+
+/dts-v1/;
+/plugin/;
+
+#include "k3-pinctrl.h"
+
+&main_pmx0 {
+	ox03h10_i2c2_pins_default: ox03h10-i2c2-default-pins {
+		pinctrl-single,pins = <
+			J722S_IOPAD(0x00b0, PIN_INPUT_PULLUP, 1) /* (P22) GPMC0_CSn2.I2C2_SCL */
+			J722S_IOPAD(0x00b4, PIN_INPUT_PULLUP, 1) /* (P23) GPMC0_CSn3.I2C2_SDA */
+		>;
+	};
+};
+
+&csi0_i2c {
+	pinctrl-names = "default";
+	pinctrl-0 = <&ox03h10_i2c2_pins_default>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	deserializer: gmsl-deserializer@28 {
+		compatible = "maxim,max96716a";
+		reg = <0x28>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				deserializer_in: endpoint {
+					remote-endpoint = <&serializer_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				deserializer_out: endpoint {
+					remote-endpoint = <&csi0_in>;
+					data-lanes = <1 2 3 4>;
+					link-frequencies = /bits/ 64 <400000000>;
+				};
+			};
+		};
+
+		i2c-gate {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			serializer: gmsl-serializer@40 {
+				compatible = "maxim,max96717";
+				reg = <0x40>;
+				gpio-controller;
+				#gpio-cells = <2>;
+				#clock-cells = <0>;
+
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					port@0 {
+						reg = <0>;
+						serializer_in: endpoint {
+							remote-endpoint = <&sensor_out>;
+							data-lanes = <1 2 3 4>;
+						};
+					};
+
+					port@1 {
+						reg = <1>;
+						serializer_out: endpoint {
+							remote-endpoint = <&deserializer_in>;
+						};
+					};
+				};
+
+				i2c-gate {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					sensor: camera@36 {
+						compatible = "ovti,ox03h10";
+						reg = <0x36>;
+						clocks = <&serializer>;
+						clock-names = "xvclk";
+
+						port {
+							sensor_out: endpoint {
+								remote-endpoint = <&serializer_in>;
+								data-lanes = <1 2 3 4>;
+								link-frequencies = /bits/ 64 <750000000>;
+							};
+						};
+					};
+				};
+			};
+		};
+	};
+};
+
+&cdns_csi2rx0 {
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		csi0_port0: port@0 {
+			reg = <0>;
+			status = "okay";
+
+			csi0_in: endpoint {
+				remote-endpoint = <&deserializer_out>;
+				bus-type = <4>;
+				clock-lanes = <0>;
+				data-lanes = <1 2 3 4>;
+			};
+		};
+	};
+};
+
+&ti_csi2rx0 {
+	status = "okay";
+};
+
+&dphy0 {
+	status = "okay";
+};

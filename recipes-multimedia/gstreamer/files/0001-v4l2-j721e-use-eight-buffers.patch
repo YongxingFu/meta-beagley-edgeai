@@ -5,6 +5,8 @@ Large RAW12 frames from the TI CSI2RX driver can strand its DMA queue when
 rapid stream restarts exhaust the default four-buffer pool. Use eight buffers
 for j721e-csi2rx, matching the validated frame-sized capture configuration.
 
+Upstream-Status: Inappropriate [board-specific capture workaround]
+
 --- a/sys/v4l2/gstv4l2object.c
 +++ b/sys/v4l2/gstv4l2object.c
 @@ -5343,6 +5343,16 @@

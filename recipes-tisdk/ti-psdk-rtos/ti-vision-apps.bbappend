@@ -7,7 +7,7 @@ SRC_URI:beagley-ai:edgeai = "repo://git.ti.com/git/processor-sdk/psdk_repo_manif
 DEPENDS:append:beagley-ai = " ti-edgeai-firmware-beagley nlohmann-json stb"
 EXTRA_OEMAKE:append:beagley-ai = " TISDK_IMAGE=edgeai"
 FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
-FILES:${PN}:append:beagley-ai = " ${bindir}/ox03h10-stream ${datadir}/ox03h10"
+FILES:${PN}:append:beagley-ai = " ${bindir}/ox03h10-stream ${bindir}/ox03h10-lcd-preview ${datadir}/ox03h10"
 SRC_URI:append:beagley-ai = " file://0002-mem-add-quiet-dmabuf-probe.patch;patchdir=${WORKDIR}/repo"
 SRC_URI:append:beagley-ai = " file://0003-j722s-link-ti-2a-wrapper.patch;patchdir=${WORKDIR}/repo"
 SRC_URI:append:beagley-ai = " file://0004-dcc-support-20-photospace-regions.patch;patchdir=${WORKDIR}/repo"
@@ -18,6 +18,7 @@ SRC_URI:append:beagley-ai = " \
     file://dcc/ox03h10/wdr/dcc_viss_wdr_304.bin \
     file://normalize-ox03h10-dcc.py \
     file://ox03h10-stream.sh \
+    file://ox03h10-lcd-preview.sh \
     file://ox03h10-receive.sh \
     file://ox03h10-restart-test.sh \
     file://ox03h10-endurance-test.sh \
@@ -37,6 +38,7 @@ do_install:append() {
     if [ "${MACHINE}" = "beagley-ai" ]; then
         ${PYTHON} ${WORKDIR}/normalize-ox03h10-dcc.py ${WORKDIR} ${D}
         install -D -m 0755 ${WORKDIR}/ox03h10-stream.sh ${D}${bindir}/ox03h10-stream
+        install -D -m 0755 ${WORKDIR}/ox03h10-lcd-preview.sh ${D}${bindir}/ox03h10-lcd-preview
         install -D -m 0755 ${WORKDIR}/ox03h10-receive.sh ${D}${datadir}/ox03h10/ox03h10-receive
         install -D -m 0755 ${WORKDIR}/ox03h10-restart-test.sh ${D}${datadir}/ox03h10/ox03h10-restart-test
         install -D -m 0755 ${WORKDIR}/ox03h10-endurance-test.sh ${D}${datadir}/ox03h10/ox03h10-endurance-test

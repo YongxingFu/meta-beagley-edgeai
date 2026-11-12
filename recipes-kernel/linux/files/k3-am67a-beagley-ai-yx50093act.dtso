@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Experimental YX50093ACT single-link OLDI panel; timing and mapping unverified. */
+/dts-v1/;
+/plugin/;
+#include <dt-bindings/gpio/gpio.h>
+#include "k3-pinctrl.h"
+
+&{/} {
+	lcd_backlight: backlight-yx50093act {
+		compatible = "pwm-backlight";
+		pwms = <&ecap0 0 50000 0>; /* 20 kHz candidate; verify STI9287 */
+		brightness-levels = <0 16 32 64 128 192 255>;
+		default-brightness-level = <6>;
+	};
+
+	lcd_yx50093act: panel-yx50093act {
+		compatible = "panel-lvds";
+		width-mm = <108>;
+		height-mm = <65>;
+		data-mapping = "vesa-24"; /* Test mapping; confirm color accuracy. */
+		enable-gpios = <&mcu_gpio0 11 GPIO_ACTIVE_HIGH>; /* STBYB */
+		pinctrl-names = "default";
+		pinctrl-0 = <&lcd_standby_pins &lcd_reset_pins>;
+		backlight = <&lcd_backlight>;
+		/* RESET is held high by the GPIO hog below; no reset sequence. */
+		panel-timing {
+			/* 23 MHz / 816x496: stable static-image bring-up. */
+			clock-frequency = <23000000>;
+			hactive = <800>; hfront-porch = <4>; hsync-len = <4>; hback-porch = <8>;
+			vactive = <480>; vfront-porch = <4>; vsync-len = <4>; vback-porch = <8>;
+		};
+		port { lcd_in: endpoint { remote-endpoint = <&lcd_oldi_out>; }; };
+	};
+};
+
+&main_pmx0 {
+	lcd_pwm_pins: lcd-pwm-pins {
+		pinctrl-single,pins = <J722S_IOPAD(0x01f0, PIN_OUTPUT, 8)>;
+	};
+};
+&mcu_pmx0 {
+	lcd_standby_pins: lcd-standby-pins {
+		pinctrl-single,pins = <J722S_MCU_IOPAD(0x002c, PIN_OUTPUT, 7)>;
+	};
+	lcd_reset_pins: lcd-reset-pins {
+		pinctrl-single,pins = <J722S_MCU_IOPAD(0x0030, PIN_OUTPUT, 7)>;
+	};
+};
+&mcu_gpio0 {
+	lcd_reset_hog {
+		gpio-hog;
+		gpios = <12 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "lcd-reset-release";
+	};
+};
+&ecap0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&lcd_pwm_pins>;
+	status = "okay";
+};
+&dss0 { status = "okay"; };
+&oldi0_dss0 { status = "okay"; };
+&oldi0_dss0_ports {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	port@0 { reg = <0>; lcd_oldi_in: endpoint { remote-endpoint = <&lcd_dss_out>; }; };
+	port@1 { reg = <1>; lcd_oldi_out: endpoint { remote-endpoint = <&lcd_in>; }; };
+};
+&dss0_ports {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	port@0 {
+		reg = <0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		lcd_dss_out: endpoint@0 { reg = <0>; remote-endpoint = <&lcd_oldi_in>; };
+	};
+};
