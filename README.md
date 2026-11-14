@@ -27,13 +27,17 @@ overlay 并自动验证其与固件头文件一致。WIC 镜像构建及镜像�
 
 当前尚未配置远端。配置远端并推送后，应在外层 `yocto-build` 的项目清单中记录本仓库 URL 和固定提交，供其他工作区恢复。
 
+完整工作区恢复步骤、TI SDK 基线、内核固定提交与镜像构建命令见[镜像复现说明](docs/reproducible-build.md)。发布镜像时应补全该说明中的 layer 仓库 URL 和固定提交，并记录镜像 SHA-256。
+
+TI `oe-layersetup` 工作区中的项目文档、脚本以及原始本地提交索引已迁入 [`docs/yocto-build-migration/`](docs/yocto-build-migration/README.md)。
+
 项目内核仓库已创建于 `sources/linux-beagley`；分支、基线标签、本地 Yocto 接入及后续远端切换见 [内核仓库指南](docs/linux-beagley.md)。
 
 在本目录使用 `git status`、`git diff`、`git log` 查看修改与历史；外层仓库忽略 `sources`，不会代替本仓库保存修改。
 
 ## 摄像头与屏幕默认内核
 
-OX03H10 / MAX96717 / MAX96716A 摄像头驱动和当前 YX50093ACT LVDS 屏幕支持位于内核默认分支 `beagley/6.12`。Yocto 固定提交为 `380dd018bcd73f7b23b75f937495c85739f8dc71`；已有 `build/conf/local.conf` 的旧覆盖值也必须同步更新。摄像头配置为 1920×1536 BGGR RAW12 60 fps，默认安装模块并启用 `ox03h10-legacy-400` CSI0 overlay 与 `yx50093act` OLDI/LVDS overlay。该 camera overlay 的 DES 端声明 400 MHz，sensor 端声明 750 MHz，DES 的固定寄存器 `0x0320=0x2c`；设备树声明不是实际速率测量。2026-11-12 冷启动后，RAW/ISP 采集、LVDS 实时预览和 DSS 硬件缩放路径已复测正常；长时间显示稳定性与自动 AE/AWB、颜色标定仍需专项验收。
+OX03H10 / MAX96717 / MAX96716A 摄像头驱动和当前 YX50093ACT LVDS 屏幕支持位于内核默认分支 `beagley/6.12`。Yocto 固定提交为 `380dd018bcd73f7b23b75f937495c85739f8dc71`。摄像头配置为 1920×1536 BGGR RAW12 60 fps，默认安装模块并启用 `ox03h10-legacy-600` CSI0 overlay 与 `yx50093act` OLDI/LVDS overlay。camera overlay 的 MAX96716A 输出端声明 600 MHz（寄存器 `0x0320=0x2c` 对应 1200 Mbit/s/lane），sensor 端声明 750 MHz。2026-11-12 冷启动后，RAW/ISP 采集、LVDS 实时预览和 DSS 硬件缩放路径已复测正常；长时间显示稳定性与自动 AE/AWB、颜色标定仍需专项验收。
 
 详情见 [摄像头构建说明](docs/maxim-gmsl-build.md) 和 [屏幕框架说明](docs/yxma023ehd-bringup.md)。
 

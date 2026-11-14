@@ -1,0 +1,277 @@
+/dts-v1/;
+
+/ {
+
+	fragment@0 {
+		target = <0xffffffff>;
+
+		__overlay__ {
+
+			ox03h10-i2c2-default-pins {
+				pinctrl-single,pins = <0xb0 0x64001 0xb4 0x64001>;
+				phandle = <0x01>;
+			};
+		};
+	};
+
+	fragment@1 {
+		target = <0xffffffff>;
+
+		__overlay__ {
+			pinctrl-names = "default";
+			pinctrl-0 = <0x01>;
+			#address-cells = <0x01>;
+			#size-cells = <0x00>;
+			status = "okay";
+
+			gmsl-deserializer@28 {
+				compatible = "maxim,max96716a";
+				reg = <0x28>;
+				i2c-alias-pool = <0x41 0x42>;
+				phandle = <0x09>;
+
+				ports {
+					#address-cells = <0x01>;
+					#size-cells = <0x00>;
+
+					port@0 {
+						reg = <0x00>;
+
+						endpoint {
+							remote-endpoint = <0x02>;
+							phandle = <0x05>;
+						};
+					};
+
+					port@2 {
+						reg = <0x02>;
+
+						endpoint {
+							remote-endpoint = <0x03>;
+							data-lanes = <0x01 0x02 0x03 0x04>;
+							link-frequencies = <0x00 0x17d78400>;
+							phandle = <0x08>;
+						};
+					};
+				};
+
+				i2c-atr {
+					#address-cells = <0x01>;
+					#size-cells = <0x00>;
+
+					i2c@0 {
+						reg = <0x00>;
+						#address-cells = <0x01>;
+						#size-cells = <0x00>;
+
+						gmsl-serializer@40 {
+							compatible = "maxim,max96717\0maxim,max96717f";
+							reg = <0x40>;
+							gpio-controller;
+							#gpio-cells = <0x02>;
+							#clock-cells = <0x00>;
+							phandle = <0x06>;
+
+							ports {
+								#address-cells = <0x01>;
+								#size-cells = <0x00>;
+
+								port@0 {
+									reg = <0x00>;
+
+									endpoint {
+										remote-endpoint = <0x04>;
+										data-lanes = <0x01 0x02 0x03 0x04>;
+										phandle = <0x07>;
+									};
+								};
+
+								port@1 {
+									reg = <0x01>;
+
+									endpoint {
+										remote-endpoint = <0x05>;
+										phandle = <0x02>;
+									};
+								};
+							};
+
+							i2c-gate {
+								#address-cells = <0x01>;
+								#size-cells = <0x00>;
+
+								camera@36 {
+									compatible = "ovti,ox03h10";
+									reg = <0x36>;
+									clocks = <0x06>;
+									clock-names = "xvclk";
+									phandle = <0x0a>;
+
+									port {
+
+										endpoint {
+											remote-endpoint = <0x07>;
+											data-lanes = <0x01 0x02 0x03 0x04>;
+											link-frequencies = <0x00 0x2cb41780>;
+											phandle = <0x04>;
+										};
+									};
+								};
+							};
+						};
+					};
+				};
+			};
+		};
+	};
+
+	fragment@2 {
+		target = <0xffffffff>;
+
+		__overlay__ {
+
+			ports {
+				#address-cells = <0x01>;
+				#size-cells = <0x00>;
+
+				port@0 {
+					reg = <0x00>;
+					status = "okay";
+					phandle = <0x0b>;
+
+					endpoint {
+						remote-endpoint = <0x08>;
+						bus-type = <0x04>;
+						clock-lanes = <0x00>;
+						data-lanes = <0x01 0x02 0x03 0x04>;
+						phandle = <0x03>;
+					};
+				};
+			};
+		};
+	};
+
+	fragment@3 {
+		target = <0xffffffff>;
+
+		__overlay__ {
+			status = "okay";
+		};
+	};
+
+	fragment@4 {
+		target = <0xffffffff>;
+
+		__overlay__ {
+			status = "okay";
+		};
+	};
+
+	__symbols__ {
+		ox03h10_i2c2_pins_default = "/fragment@0/__overlay__/ox03h10-i2c2-default-pins";
+		deserializer = "/fragment@1/__overlay__/gmsl-deserializer@28";
+		deserializer_in = "/fragment@1/__overlay__/gmsl-deserializer@28/ports/port@0/endpoint";
+		deserializer_out = "/fragment@1/__overlay__/gmsl-deserializer@28/ports/port@2/endpoint";
+		serializer = "/fragment@1/__overlay__/gmsl-deserializer@28/i2c-atr/i2c@0/gmsl-serializer@40";
+		serializer_in = "/fragment@1/__overlay__/gmsl-deserializer@28/i2c-atr/i2c@0/gmsl-serializer@40/ports/port@0/endpoint";
+		serializer_out = "/fragment@1/__overlay__/gmsl-deserializer@28/i2c-atr/i2c@0/gmsl-serializer@40/ports/port@1/endpoint";
+		sensor = "/fragment@1/__overlay__/gmsl-deserializer@28/i2c-atr/i2c@0/gmsl-serializer@40/i2c-gate/camera@36";
+		sensor_out = "/fragment@1/__overlay__/gmsl-deserializer@28/i2c-atr/i2c@0/gmsl-serializer@40/i2c-gate/camera@36/port/endpoint";
+		csi0_port0 = "/fragment@2/__overlay__/ports/port@0";
+		csi0_in = "/fragment@2/__overlay__/ports/port@0/endpoint";
+	};
+
+	__fixups__ {
+		main_pmx0 = "/fragment@0:target:0";
+		csi0_i2c = "/fragment@1:target:0";
+		cdns_csi2rx0 = "/fragment@2:target:0";
+		ti_csi2rx0 = "/fragment@3:target:0";
+		dphy0 = "/fragment@4:target:0";
+	};
+
+	__local_fixups__ {
+
+		fragment@1 {
+
+			__overlay__ {
+				pinctrl-0 = <0x00>;
+
+				gmsl-deserializer@28 {
+
+					ports {
+
+						port@0 {
+
+							endpoint {
+								remote-endpoint = <0x00>;
+							};
+						};
+
+						port@2 {
+
+							endpoint {
+								remote-endpoint = <0x00>;
+							};
+						};
+					};
+
+					i2c-atr {
+
+						i2c@0 {
+
+							gmsl-serializer@40 {
+
+								ports {
+
+									port@0 {
+
+										endpoint {
+											remote-endpoint = <0x00>;
+										};
+									};
+
+									port@1 {
+
+										endpoint {
+											remote-endpoint = <0x00>;
+										};
+									};
+								};
+
+								i2c-gate {
+
+									camera@36 {
+										clocks = <0x00>;
+
+										port {
+
+											endpoint {
+												remote-endpoint = <0x00>;
+											};
+										};
+									};
+								};
+							};
+						};
+					};
+				};
+			};
+		};
+
+		fragment@2 {
+
+			__overlay__ {
+
+				ports {
+
+					port@0 {
+
+						endpoint {
+							remote-endpoint = <0x00>;
+						};
+					};
+				};
+			};
+		};
+	};
+};

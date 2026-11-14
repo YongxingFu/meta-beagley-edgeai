@@ -1,0 +1,21 @@
+[Unit]
+Description=OX03H10 sensor to HDMI preview
+After=edgeai-init.service systemd-udev-trigger.service local-fs.target
+Wants=edgeai-init.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sh -c 'i=0; while [ "$i" -lt 120 ]; do [ -e /dev/media0 ] && [ -e /dev/video3 ] && [ -e /opt/imaging/ox03h10/wdr/dcc_viss_wdr_304.bin ] && [ -e /opt/imaging/ox03h10/wdr/dcc_2a_wdr_304.bin ] && [ -e /usr/lib/ox03h10/ox03h10-msc-release-workaround.so ] && exit 0; i=$((i + 1)); sleep 1; done; exit 1'
+# Let the boot-time EdgeAI display and DRM connector setup finish before taking over HDMI.
+ExecStartPre=/bin/sleep 15
+ExecStart=/usr/bin/ox03h10-hdmi-1080p
+Restart=on-failure
+RestartSec=10s
+KillSignal=SIGINT
+TimeoutStopSec=20s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

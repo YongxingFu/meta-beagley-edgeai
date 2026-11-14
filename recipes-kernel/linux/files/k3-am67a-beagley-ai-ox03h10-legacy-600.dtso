@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
-/* Board-tested CSI0 profile: DES endpoint 400 MHz; sensor endpoint 750 MHz. */
+/* CSI0 profile: MAX96716A output 600 MHz; sensor output 750 MHz. */
 
 /dts-v1/;
 /plugin/;
@@ -42,7 +42,7 @@
 				deserializer_out: endpoint {
 					remote-endpoint = <&csi0_in>;
 					data-lanes = <1 2 3 4>;
-					link-frequencies = /bits/ 64 <400000000>;
+					link-frequencies = /bits/ 64 <600000000>;
 				};
 			};
 		};
