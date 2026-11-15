@@ -4,7 +4,7 @@
 
 ## 文件与构建
 
-驱动及设备树已经纳入 `sources/linux-beagley` 的默认分支 `beagley/6.12`，与摄像头框架共用同一内核提交：
+驱动及设备树已纳入本地完整历史开发分支 `beagley/6.12`，与摄像头框架共用同一源码树。GitHub 为减少历史传输，发布单提交快照分支 `beagley/6.12-snapshot`，当前固定提交为 `2fe5bb7cad42dd9269f9347d0806c797a210796c`：
 
 - 内核 `drivers/gpu/drm/panel/panel-yousee-yxma023ehd.c`：I²C DRM panel，动态注册 DSI 外设。
 - 内核 `arch/arm64/boot/dts/ti/k3-am67a-beagley-ai-yxma023ehd.dtso`：DSS1 VP1 → DSI0 → I²C panel 图连接模板，DSI、PHY、panel 默认禁用。

@@ -10,15 +10,15 @@ bootstrap and supplies the Processor SDK 11.02.02 layer set.
 | --- | --- | --- |
 | TI layer set | `configs/processor-sdk-analytics/processor-sdk-analytics-11.02.02-config.txt` in TI `oe-layersetup` | TI-pinned commits in that file |
 | BeagleY-AI layer | `meta-beagley-edgeai` | Pin the reviewed project commit here when publishing a build |
-| BeagleY-AI kernel | `linux-beagley`, branch `beagley/6.12` | `380dd018bcd73f7b23b75f937495c85739f8dc71` |
+| BeagleY-AI kernel | `https://github.com/YongxingFu/linux-beagley.git`, branch `beagley/6.12-snapshot` | `2fe5bb7cad42dd9269f9347d0806c797a210796c` (single-commit source snapshot) |
 | Machine | `beagley-ai` | `build/conf/local.conf` |
 | Image | `tisdk-edgeai-image` | BitBake image recipe |
 
-The layer and kernel repositories must be available from a shared Git server
-before another machine can reproduce this build. Once published, replace the
-layer revision above with its full commit SHA and record the repository URLs in
-the project release notes. Do not use a moving branch name or `AUTOREV` as the
-release identifier.
+The kernel snapshot is published on GitHub. The layer repository URL is
+`https://github.com/YongxingFu/meta-beagley-edgeai.git`; use its reviewed commit
+SHA when checking out a release. The kernel snapshot intentionally omits the
+upstream commit history to reduce the initial transfer. Do not use a moving
+branch name or `AUTOREV` as the release identifier.
 
 ## Set up a workspace
 

@@ -5,12 +5,14 @@
 - 路径：项目根目录下的 `sources/linux-beagley`，独立 Git 仓库。
 - 上游：`https://github.com/beagleboard/linux.git`，remote 名为 `upstream`。
 - 上游分支：`v6.12.57-ti-arm64-r64`。
-- 项目集成分支：`beagley/6.12`。
+- 本地开发分支（完整历史）：`beagley/6.12`。
+- GitHub 发布分支（单提交源码快照）：`beagley/6.12-snapshot`。
+- 发布快照提交：`2fe5bb7cad42dd9269f9347d0806c797a210796c`，源自本地开发提交 `380dd018bcd73f7b23b75f937495c85739f8dc71`。
 - 基线提交：`2eea568f445af33f3280261904bf1027b02512d8`。
 - 基线标签：`baseline/beagleboard-6.12.57-20261108`。
 - 提交身份：`yxing.f <yxing.f@xx.com>`，仅对本仓库生效。
 
-仓库从本地完整下载缓存克隆，未使用 `--shared`，未使用对象硬链接或 alternates；Git 对象独立于 Yocto 缓存。保留缓存中已有的历史，没有在初始化过程中联网更新上游。基线源码保持不变，项目管理文档位于本 layer。
+本地开发仓库从下载缓存完整克隆，保留上游历史，供驱动开发和审查。GitHub 上发布的是单提交快照分支，不含上游历史；这样新工作区只需下载快照所需源码对象。快照提交的树与本地开发提交 `380dd018bcd73f7b23b75f937495c85739f8dc71` 完全相同。
 
 标签描述的是已验证镜像所用的上游内核源码提交；镜像中的 AI overlay、内存布局和固件还由 layer 生成。完整回退需要同时选择匹配的 layer 版本和构建配置。
 
@@ -22,7 +24,7 @@
 require conf/distro/include/beagley-kernel-local.inc
 ```
 
-该 include 由本 layer 管理，以 `protocol=file` 从 `sources/linux-beagley` 获取固定提交。它使用现有 `linux-bb.org` 配方，继续应用 AI overlay 生成与内存布局校验任务。这里不是 `externalsrc`：BitBake 在自身工作区编译，不直接编译开发 checkout；只有提交并选定的版本会进入构建。
+该 include 由本 layer 管理，以 `protocol=file` 从 `sources/linux-beagley` 获取固定提交 `2fe5bb7cad42dd9269f9347d0806c797a210796c`，使用本地分支 `beagley/6.12-snapshot`。它使用现有 `linux-bb.org` 配方，继续应用 AI overlay 生成与内存布局校验任务。这里不是 `externalsrc`：BitBake 在自身工作区编译，不直接编译开发 checkout；只有提交并选定的版本会进入构建。
 
 路径默认由 `${TOPDIR}/../sources/linux-beagley` 推导。若工作区不同，可在 `local.conf` 设置 `BEAGLEY_KERNEL_LOCAL_PATH`。辅助构建目录 `build-beagley-tools` 未自动切换。
 
@@ -37,7 +39,7 @@ bitbake linux-bb.org
 bitbake tisdk-edgeai-image
 ```
 
-新工作区需先恢复 layer 和内核仓库，再在构建配置中启用该 include。仅恢复上游 TI layer 清单尚不能恢复本项目的本地仓库和配置。
+新工作区需先恢复 layer 和内核快照仓库，再在构建配置中启用该 include。获取快照可使用 `git clone --depth=1 --branch beagley/6.12-snapshot https://github.com/YongxingFu/linux-beagley.git sources/linux-beagley`。仅恢复上游 TI layer 清单尚不能恢复本项目的本地仓库和配置。
 
 ## 驱动开发循环
 
@@ -72,26 +74,11 @@ git switch -c fix/from-baseline baseline/beagleboard-6.12.57-20261108
 
 Yocto 回退无需切换开发 checkout：将分支配置恢复为 `beagley/6.12`、固定提交恢复为上述基线 SHA，然后重新构建即可。需要复现整个系统时，也恢复匹配的 layer 和构建配置。
 
-## 配置远端与发布
+## GitHub 发布快照
 
-当前没有项目远端 `origin`。在 Git 服务创建空仓库后执行（替换地址）：
+远端 `origin` 指向 `git@github.com:YongxingFu/linux-beagley.git`，`upstream` 保留 BeagleBoard Linux。发布分支 `beagley/6.12-snapshot` 当前指向单提交快照 `2fe5bb7cad42dd9269f9347d0806c797a210796c`。另一个远端分支 `beagley/6.12` 目前也指向此快照；不要将本地完整历史开发分支直接推到这两个快照分支。
 
-```bash
-git remote add origin <项目内核仓库地址>
-git push -u origin beagley/6.12
-git push origin baseline/beagleboard-6.12.57-20261108
-```
-
-然后移除 `local.conf` 中本地内核 include，改由 layer 的内核 `.bbappend` 指向远端，并固定提交。例如 HTTPS 源：
-
-```bitbake
-KERNEL_GIT_URI:beagley-ai = "git://<主机>/<组织>/linux-beagley.git"
-KERNEL_GIT_PROTOCOL:beagley-ai = "https"
-BRANCH:beagley-ai = "beagley/6.12"
-SRCREV:beagley-ai = "<已推送的完整提交 SHA>"
-```
-
-发布时记录内核提交、layer 提交、构建配置和镜像 SHA256。基线标签保持不变，新里程碑创建新标签。远端创建和推送尚未执行，本地仓库不是异机备份。
+若发布新的源码状态，创建新的根快照提交并更新快照分支；构建配置必须同步更新 `BEAGLEY_KERNEL_SRCREV`。由于快照没有父提交，更新该发布分支时需明确使用 `--force-with-lease`，并先核对远端当前 SHA。每个已发布镜像都记录 layer SHA、快照 SHA、TI 配置和镜像 SHA256。
 
 ## 摄像头与屏幕统一默认分支（2026-11-08）
 
