@@ -24,9 +24,16 @@ branch name or `AUTOREV` as the release identifier.
 
 Clone TI's `oe-layersetup` repository, then initialize its Processor SDK
 Analytics 11.02.02 sources using the configuration listed above. Clone the
-published `meta-beagley-edgeai` and `linux-beagley` repositories into the
-workspace's `sources/` directory, checking out the published SHAs. Add the
-BeagleY-AI layer to `build/conf/bblayers.conf` and set:
+published project layer and compact kernel snapshot into `sources/`:
+
+```bash
+git clone https://github.com/YongxingFu/meta-beagley-edgeai.git sources/meta-beagley-edgeai
+git -C sources/meta-beagley-edgeai checkout <reviewed-layer-commit>
+git clone --depth=1 --branch beagley/6.12-snapshot https://github.com/YongxingFu/linux-beagley.git sources/linux-beagley
+git -C sources/linux-beagley checkout --detach 2fe5bb7cad42dd9269f9347d0806c797a210796c
+```
+
+Add the BeagleY-AI layer to `build/conf/bblayers.conf` and set:
 
 ```bitbake
 MACHINE = "beagley-ai"

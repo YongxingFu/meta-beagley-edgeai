@@ -25,7 +25,7 @@ overlay 并自动验证其与固件头文件一致。WIC 镜像构建及镜像�
 
 本目录作为独立 Git 仓库管理，默认分支为 `main`。保存配方、补丁、配置、文档和脚本；构建缓存与镜像保留在项目构建目录及制品存储中。
 
-当前尚未配置远端。配置远端并推送后，应在外层 `yocto-build` 的项目清单中记录本仓库 URL 和固定提交，供其他工作区恢复。
+GitHub 远端已配置为 `https://github.com/YongxingFu/meta-beagley-edgeai.git`，`main` 分支已推送。项目仓库及 Linux 单提交发布快照的固定版本见[镜像复现说明](docs/reproducible-build.md)。
 
 完整工作区恢复步骤、TI SDK 基线、内核固定提交与镜像构建命令见[镜像复现说明](docs/reproducible-build.md)。发布镜像时应补全该说明中的 layer 仓库 URL 和固定提交，并记录镜像 SHA-256。
 
