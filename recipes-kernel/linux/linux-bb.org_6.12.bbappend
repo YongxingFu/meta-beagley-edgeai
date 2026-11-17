@@ -50,3 +50,8 @@ python do_validate_beagley_memory() {
     ])
 }
 addtask validate_beagley_memory after do_compile before do_install do_deploy
+
+# OX08D10 source and overlay are provided by the pinned project kernel revision.
+SRC_URI:append:beagley-ai = " file://ox08d10.cfg"
+KERNEL_CONFIG_FRAGMENTS:append:beagley-ai = " ${WORKDIR}/ox08d10.cfg"
+KERNEL_DEVICETREE:append:beagley-ai = " ti/k3-am67a-beagley-ai-ox08d10.dtbo"
