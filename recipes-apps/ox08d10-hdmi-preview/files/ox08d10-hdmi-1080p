@@ -1,0 +1,36 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# OX08D10 HDR4 PWL12 -> VISS NV12 -> center crop -> HDMI.
+set -eu
+media=${MEDIA_DEVICE:-/dev/media0}
+video=$(media-ctl -d "$media" -e '30102000.ticsi2rx context 0')
+dcc=${DCC_DIR:-/opt/imaging/ox08d10/wdr}
+workaround=${MSC_WORKAROUND:-/usr/lib/ox08d10/msc-workaround.so}
+# Exposure remains fixed in the sensor; white balance is applied by VISS.
+awb_mode=${AWB_MODE:-0}
+case "$awb_mode" in
+    0|2) ;;
+    *) echo "AWB_MODE must be 0 (auto) or 2 (disabled)" >&2; exit 2 ;;
+esac
+for file in "$dcc/dcc_viss_wdr.bin" "$dcc/dcc_2a_wdr.bin" "$workaround"; do
+    [ -r "$file" ] || { echo "Missing required file: $file" >&2; exit 1; }
+done
+media-ctl -d "$media" -V '"ox08d10 5-0036":0 [fmt:SRGGB12_1X12/3840x2168 field:none colorspace:raw]'
+media-ctl -d "$media" -V '"cdns_csi2rx.30101000.csi-bridge":0 [fmt:SRGGB12_1X12/3840x2168 field:none colorspace:raw]'
+media-ctl -d "$media" -V '"30102000.ticsi2rx":0 [fmt:SRGGB12_1X12/3840x2168 field:none colorspace:raw]'
+export LD_PRELOAD="$workaround${LD_PRELOAD:+:$LD_PRELOAD}"
+exec gst-launch-1.0 -e -v \
+ v4l2src device="$video" io-mode=dmabuf \
+ ! 'video/x-bayer,format=rggb12,width=3840,height=2168,framerate=30/1,meta-height-before=2,meta-height-after=6' \
+ ! tiovxisp sensor-name=SENSOR_OX08D10 format-msb=11 num-exposures=1 \
+    wdr-enabled=true bypass-dwb=true dcc-isp-file="$dcc/dcc_viss_wdr.bin" \
+    sink_0::dcc-2a-file="$dcc/dcc_2a_wdr.bin" \
+    sink_0::ae-mode=2 sink_0::awb-mode="$awb_mode" sink_0::pool-size=4 \
+ ! 'video/x-raw,format=NV12,width=3840,height=2160,framerate=30/1' \
+ ! tiovxmultiscaler name=multi target=VPAC_MSC1 sink::pool-size=4 \
+    sink::roi-startx=960 sink::roi-starty=540 sink::roi-width=1920 sink::roi-height=1080 \
+    src_0::pool-size=8 multi. \
+ ! 'video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1' \
+ ! queue leaky=downstream max-size-buffers=2 \
+ ! fpsdisplaysink text-overlay=false sync=false \
+    video-sink="kmssink driver-name=tidss bus-id=30220000.dss connector-id=${CONNECTOR_ID:-41} plane-id=${PLANE_ID:-32} sync=false force-modesetting=true"

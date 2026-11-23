@@ -1,0 +1,20 @@
+From: BeagleY-AI Project
+Subject: [PATCH] sensor: register OX08D10 with TI DCC profile 8
+
+Map the OX08D10 name to its sensor-specific WDR tuning identifier.
+
+Upstream-Status: Inappropriate [BeagleY integration]
+
+--- a/src/tiovx_sensor_module.c
++++ b/src/tiovx_sensor_module.c
+@@ -457,6 +457,10 @@ vx_status tiovx_init_sensor(SensorObj *sensorObj, char *objName)
+     {
+         sensorObj->sensorParams.dccId=304;
+     }
++    else if(strcmp(sensorObj->sensor_name, "SENSOR_OX08D10") == 0)
++    {
++        sensorObj->sensorParams.dccId=8;
++    }
+    else
+     {
+         TIOVX_MODULE_ERROR("[SENSOR-MODULE] Invalid sensor name\n");

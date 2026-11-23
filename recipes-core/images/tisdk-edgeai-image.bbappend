@@ -8,3 +8,8 @@ IMAGE_INSTALL:append:beagley-ai = " kernel-module-panel-lvds"
 IMAGE_INSTALL:append:beagley-ai = " ${@bb.utils.contains('BEAGLEY_ENABLE_OX03H10_CAMERA', '1', 'ox03h10-hdmi-preview', '', d)}"
 
 IMAGE_INSTALL:append:beagley-ai = " kernel-module-ox08d10"
+
+IMAGE_INSTALL:append:beagley-ai = " ox08d10-hdmi-preview"
+
+# Install the dual-display application and its startup services.
+IMAGE_INSTALL:append:beagley-ai = " beagley-display"
