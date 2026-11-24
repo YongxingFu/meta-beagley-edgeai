@@ -4,7 +4,7 @@ COMPATIBLE_MACHINE = "^beagley-ai$"
 PACKAGE_ARCH = "${MACHINE_ARCH}"
 
 # Local working-tree build. Set BEAGLEY_DISPLAY_SOURCE for another checkout.
-BEAGLEY_DISPLAY_SOURCE ?= "${TOPDIR}/../sources/apps/beagley-display-app"
+BEAGLEY_DISPLAY_SOURCE ?= "${TOPDIR}/../sources/beagley-ai-apps/beagley-display-app"
 EXTERNALSRC = "${BEAGLEY_DISPLAY_SOURCE}"
 EXTERNALSRC_BUILD = "${WORKDIR}/build"
 
