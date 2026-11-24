@@ -1,6 +1,6 @@
 SUMMARY = "OX08D10 hardware ISP center-crop preview on HDMI"
 LICENSE = "MIT"
-LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302e"
+LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 COMPATIBLE_MACHINE = "^beagley-ai$"
 PACKAGE_ARCH = "${MACHINE_ARCH}"
 SRC_URI = "file://ox08d10-hdmi-1080p file://ox08d10-msc-workaround.c"
