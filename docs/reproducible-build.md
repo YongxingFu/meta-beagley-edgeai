@@ -1,8 +1,8 @@
 # BeagleY-AI 镜像从零构建说明
 
-本文说明如何在一台新的 Linux 构建机上，先获取 TI Processor SDK Analytics 11.02.02 工程，再获取 BeagleY-AI 项目 layer 和内核仓库，最后构建可写入 microSD/TF 卡的 WIC 镜像。
+本文说明如何在一台新的 Linux 构建机上，先获取 TI Processor SDK Analytics 11.02.02 工程，再获取 BeagleY-AI 项目 layer、内核和应用源码仓库，最后构建可写入 microSD/TF 卡的 WIC 镜像。
 
-工程目录由 TI 的 `oe-layersetup` 管理；BeagleY-AI 的 Yocto 配方、补丁和脚本保存在 `meta-beagley-edgeai`；内核源码保存在 `linux-beagley`。不要把项目修改提交到 TI 的 `oe-layersetup` 仓库。
+工程目录由 TI 的 `oe-layersetup` 管理；BeagleY-AI 的 Yocto 配方、补丁和脚本保存在 `meta-beagley-edgeai`；内核源码保存在 `linux-beagley`，应用源码保存在 `beagley-ai-apps`。不要把项目修改提交到 TI 的 `oe-layersetup` 仓库。
 
 ## 1. 固定输入版本
 
@@ -10,13 +10,14 @@
 | --- | --- | --- |
 | TI 工程配置工具 | `https://git.ti.com/git/arago-project/oe-layersetup.git` | `a5d7c4cb5afdee8300dc7ce2d6b7d64e23599b0b` |
 | TI SDK 层清单 | `configs/processor-sdk-analytics/processor-sdk-analytics-11.02.02-config.txt` | 清单内固定的各仓库提交 |
-| BeagleY-AI 集成层 | `https://github.com/YongxingFu/meta-beagley-edgeai.git` | `main` 分支；发布镜像时应记录实际检出的完整 SHA。已核对版本：`7759a35fb234e7df9aac16c30f81b966cfcfa1da` |
-| BeagleY-AI 内核 | `https://github.com/YongxingFu/linux-beagley.git` | `beagley/6.12-snapshot`，提交 `2fe5bb7cad42dd9269f9347d0806c797a210796c` |
+| BeagleY-AI 集成层 | `https://github.com/YongxingFu/meta-beagley-edgeai.git` | `main` 分支；发布镜像时应记录实际检出的完整 SHA。已核对版本：`94e49b0d7eeb8d48e0d6b83fefda7480b1cef5b5` |
+| BeagleY-AI 内核 | `https://github.com/YongxingFu/linux-beagley.git` | `main`，提交 `1641cfeeb466d7a0362a474c0f7ead1953f95edb` |
+| BeagleY-AI 应用 | `https://github.com/YongxingFu/beagley-ai-apps.git` | 使用发布记录中的完整 SHA，当前文档暂无已验证的应用 SHA |
 | Yocto machine / image | `beagley-ai` / `tisdk-edgeai-image` | 由下文配置启用 |
 
-TI 配置清单将 OpenEmbedded、meta-ti、meta-arago 等仓库锁定到明确提交。使用这份清单即可复现对应 SDK 层组合；不要用其他版本的配置文件替换它。内核远端分支是单提交源码快照，用于减少首次下载量；不要将本地完整开发历史推送到该发布分支。
+TI 配置清单将 OpenEmbedded、meta-ti、meta-arago 等仓库锁定到明确提交。使用这份清单即可复现对应 SDK 层组合；不要用其他版本的配置文件替换它。内核版本应与所选 layer 的 `BEAGLEY_KERNEL_SRCREV` 一致。
 
-项目 layer 的 `main` 会随开发更新。复现某次已发布镜像时，使用发布记录中的 layer 完整 SHA，而不是移动的分支名。上表 SHA 是本说明编写时核对过的 layer 基线，可直接用于当前仓库版本。
+项目 layer 的 `main` 会随开发更新。复现某次已发布镜像时，使用发布记录中的 layer 完整 SHA，而不是移动的分支名。上表 layer 基线已包含双屏显示配方，应用源码路径由第 5 节显式配置。
 
 ## 2. 安装主机依赖
 
@@ -55,26 +56,32 @@ bitbake-layers show-layers
 
 ## 4. 获取 BeagleY-AI 项目仓库
 
-回到工程根目录，在 `sources/` 下分别克隆项目 layer 和内核快照：
+回到工程根目录，在 `sources/` 下克隆项目 layer、内核和应用仓库：
 
 ```bash
 cd ~/work/beagley/yocto-build
 git clone https://github.com/YongxingFu/meta-beagley-edgeai.git sources/meta-beagley-edgeai
-git -C sources/meta-beagley-edgeai checkout 7759a35fb234e7df9aac16c30f81b966cfcfa1da
+git -C sources/meta-beagley-edgeai checkout 94e49b0d7eeb8d48e0d6b83fefda7480b1cef5b5
 
-git clone --depth=1 --branch beagley/6.12-snapshot \
+git clone --branch main \
   https://github.com/YongxingFu/linux-beagley.git sources/linux-beagley
-git -C sources/linux-beagley checkout --detach 2fe5bb7cad42dd9269f9347d0806c797a210796c
+git -C sources/linux-beagley checkout --detach 1641cfeeb466d7a0362a474c0f7ead1953f95edb
+
+git clone https://github.com/YongxingFu/beagley-ai-apps.git sources/beagley-ai-apps
+test -f sources/beagley-ai-apps/beagley-display-app/CMakeLists.txt
 ```
+
+应用仓库需要先发布包含 `beagley-display-app/` 的提交，并且构建机需要有读取权限。复现已发布镜像时，克隆后将应用仓库检出到发布记录中对应的完整 SHA。`beagley-display` 配方使用 `externalsrc` 直接读取应用工作树，未提交的源码修改也会进入构建。发布镜像时应使用干净的应用工作树。
 
 核对检出的提交：
 
 ```bash
 git -C sources/meta-beagley-edgeai rev-parse HEAD
 git -C sources/linux-beagley rev-parse HEAD
+git -C sources/beagley-ai-apps rev-parse HEAD
 ```
 
-layer 的版本应与发布记录一致；内核应输出 `2fe5bb7cad42dd9269f9347d0806c797a210796c`。发布新的镜像版本时，应先选择经过审查的 layer 提交，并将 SHA 与内核 SHA 一起记录。
+layer 的版本应与发布记录一致；内核应输出 `1641cfeeb466d7a0362a474c0f7ead1953f95edb`。发布新的镜像版本时，应先选择经过审查的 layer 提交，并记录 layer、内核和应用的 SHA。
 
 ## 5. 将 Beagle layer 加入构建配置
 
@@ -91,6 +98,7 @@ bitbake-layers add-layer "$OEBASE/sources/meta-beagley-edgeai"
 ```bitbake
 MACHINE = "beagley-ai"
 ARAGO_BRAND = "edgeai"
+BEAGLEY_DISPLAY_SOURCE = "${TOPDIR}/../sources/beagley-ai-apps/beagley-display-app"
 BB_NUMBER_THREADS = "4"
 PARALLEL_MAKE = "-j 8"
 require conf/distro/include/beagley-edgeai.inc
@@ -107,7 +115,16 @@ bitbake -e linux-bb.org | rg '^(KERNEL_GIT_URI|KERNEL_GIT_PROTOCOL|BRANCH|SRCREV
 bitbake -e tisdk-edgeai-image | rg '^(MACHINE|ARAGO_BRAND|IMAGE_BASENAME|DEPLOY_DIR_IMAGE)='
 ```
 
-## 6. 构建镜像
+## 6. 编译显示应用并构建镜像
+
+可在已加载环境的 `build/` 目录单独交叉编译应用：
+
+```bash
+bitbake -e beagley-display | rg '^(BEAGLEY_DISPLAY_SOURCE|EXTERNALSRC)='
+bitbake beagley-display
+```
+
+`beagley-display` 配方使用 Yocto 提供的 CMake 工具链以及 GStreamer、GLib 和 libdrm 依赖编译并打包应用。`tisdk-edgeai-image` 已包含该包，直接构建镜像时 BitBake 会自动编译应用。
 
 在已加载环境的 `build/` 目录执行：
 
@@ -155,6 +172,7 @@ sha256sum build/deploy-ti/images/beagley-ai/tisdk-edgeai-image-beagley-ai.rootfs
 git -C "$OEBASE" rev-parse HEAD
 git -C "$OEBASE/sources/meta-beagley-edgeai" rev-parse HEAD
 git -C "$OEBASE/sources/linux-beagley" rev-parse HEAD
+git -C "$OEBASE/sources/beagley-ai-apps" rev-parse HEAD
 sha256sum "$OEBASE/build/deploy-ti/images/beagley-ai/tisdk-edgeai-image-beagley-ai.rootfs.wic.xz"
 ```
 
