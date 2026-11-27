@@ -11,7 +11,7 @@
 | TI 工程配置工具 | `https://git.ti.com/git/arago-project/oe-layersetup.git` | `a5d7c4cb5afdee8300dc7ce2d6b7d64e23599b0b` |
 | TI SDK 层清单 | `configs/processor-sdk-analytics/processor-sdk-analytics-11.02.02-config.txt` | 清单内固定的各仓库提交 |
 | BeagleY-AI 集成层 | `https://github.com/YongxingFu/meta-beagley-edgeai.git` | `main` 分支；发布镜像时应记录实际检出的完整 SHA。已核对版本：`94e49b0d7eeb8d48e0d6b83fefda7480b1cef5b5` |
-| BeagleY-AI 内核 | `https://github.com/YongxingFu/linux-beagley.git` | `main`，提交 `1641cfeeb466d7a0362a474c0f7ead1953f95edb` |
+| BeagleY-AI 内核 | `https://github.com/YongxingFu/linux-beagley.git` | `main`，提交 `ec3ac72fa78b8dde99087e344248a923f30c2933` |
 | BeagleY-AI 应用 | `https://github.com/YongxingFu/beagley-ai-apps.git` | 使用发布记录中的完整 SHA，当前文档暂无已验证的应用 SHA |
 | Yocto machine / image | `beagley-ai` / `tisdk-edgeai-image` | 由下文配置启用 |
 
@@ -65,7 +65,7 @@ git -C sources/meta-beagley-edgeai checkout 94e49b0d7eeb8d48e0d6b83fefda7480b1ce
 
 git clone --branch main \
   https://github.com/YongxingFu/linux-beagley.git sources/linux-beagley
-git -C sources/linux-beagley checkout --detach 1641cfeeb466d7a0362a474c0f7ead1953f95edb
+git -C sources/linux-beagley checkout --detach ec3ac72fa78b8dde99087e344248a923f30c2933
 
 git clone https://github.com/YongxingFu/beagley-ai-apps.git sources/beagley-ai-apps
 test -f sources/beagley-ai-apps/beagley-display-app/CMakeLists.txt
@@ -81,7 +81,7 @@ git -C sources/linux-beagley rev-parse HEAD
 git -C sources/beagley-ai-apps rev-parse HEAD
 ```
 
-layer 的版本应与发布记录一致；内核应输出 `1641cfeeb466d7a0362a474c0f7ead1953f95edb`。发布新的镜像版本时，应先选择经过审查的 layer 提交，并记录 layer、内核和应用的 SHA。
+layer 的版本应与发布记录一致；内核应输出 `ec3ac72fa78b8dde99087e344248a923f30c2933`。发布新的镜像版本时，应先选择经过审查的 layer 提交，并记录 layer、内核和应用的 SHA。
 
 ## 5. 将 Beagle layer 加入构建配置
 

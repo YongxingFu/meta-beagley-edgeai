@@ -9,6 +9,6 @@ boot_fit=0
 fdtfile=ti/k3-am67a-beagley-ai.dtb
 uenvcmd=run bootcmd_ti_mmc
 # These files are supplied by the firmware/kernel recipes from one memory map.
-name_overlays=ti/k3-am67a-beagley-ai-edgeai-apps.dtbo ti/k3-am67a-beagley-ai-ox03h10-legacy-600.dtbo ti/k3-am67a-beagley-ai-yx50093act.dtbo ti/k3-am67a-beagley-ai-lp5817.dtbo
+name_overlays=ti/k3-am67a-beagley-ai-edgeai-apps.dtbo ti/k3-am67a-beagley-ai-ox03h10-legacy-600.dtbo ti/k3-am67a-beagley-ai-yx50093act.dtbo ti/k3-am67a-beagley-ai-lp5817.dtbo ti/k3-am67a-beagley-ai-drv8834.dtbo
 rproc_fw_binaries=2 /lib/firmware/j722s-main-r5f0_0-fw 3 /lib/firmware/j722s-c71_0-fw 4 /lib/firmware/j722s-c71_1-fw
 dorprocboot=1
