@@ -1,0 +1,486 @@
+From 22b6ae685fa59c575358f19b3cb6238de3084a10 Mon Sep 17 00:00:00 2001
+From: BeagleY-AI project <yxing.f@xx.com>
+Date: Fri, 27 Nov 2026 14:04:41 +0800
+Subject: [PATCH] leds: add TI LP5817 constant-current LED driver
+
+Add an LED class driver and device tree binding for the LP5817.
+Expose independent PWM brightness and board-defined current limits.
+
+Upstream-Status: Inappropriate [project kernel integration]
+---
+ .../devicetree/bindings/leds/ti,lp5817.yaml   |  83 +++++
+ drivers/leds/Kconfig                          |  12 +
+ drivers/leds/Makefile                         |   1 +
+ drivers/leds/leds-lp5817.c                    | 335 ++++++++++++++++++
+ 4 files changed, 431 insertions(+)
+ create mode 100644 Documentation/devicetree/bindings/leds/ti,lp5817.yaml
+ create mode 100644 drivers/leds/leds-lp5817.c
+
+diff --git a/Documentation/devicetree/bindings/leds/ti,lp5817.yaml b/Documentation/devicetree/bindings/leds/ti,lp5817.yaml
+new file mode 100644
+index 0000000..d0124bd
+--- /dev/null
++++ b/Documentation/devicetree/bindings/leds/ti,lp5817.yaml
+@@ -0,0 +1,83 @@
++# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/leds/ti,lp5817.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: Texas Instruments LP5817 LED controller
++
++maintainers:
++  - yxing.f <yxing.f@xx.com>
++
++description:
++  The LP5817 is an I2C LED controller with three independently dimmable
++  constant-current sink outputs. See https://www.ti.com/lit/ds/symlink/lp5817.pdf.
++
++properties:
++  compatible:
++    const: ti,lp5817
++
++  reg:
++    items:
++      - const: 0x2d
++
++  "#address-cells":
++    const: 1
++
++  "#size-cells":
++    const: 0
++
++patternProperties:
++  "^led@[0-2]$":
++    type: object
++    $ref: common.yaml#
++    unevaluatedProperties: false
++    properties:
++      reg:
++        minimum: 0
++        maximum: 2
++
++      led-max-microamp:
++        description: Nominal sink current while PWM is on.
++        minimum: 100
++        maximum: 20000
++        default: 5000
++
++      default-state:
++        description: Initial state at probe. On selects full PWM duty.
++        enum: ["off", "on"]
++        default: "off"
++
++    required:
++      - reg
++
++required:
++  - compatible
++  - reg
++  - "#address-cells"
++  - "#size-cells"
++
++anyOf:
++  - required: [led@0]
++  - required: [led@1]
++  - required: [led@2]
++
++additionalProperties: false
++
++examples:
++  - |
++    i2c {
++        #address-cells = <1>;
++        #size-cells = <0>;
++
++        led-controller@2d {
++            compatible = "ti,lp5817";
++            reg = <0x2d>;
++            #address-cells = <1>;
++            #size-cells = <0>;
++
++            led@0 {
++                reg = <0>;
++            };
++        };
++    };
+diff --git a/drivers/leds/Kconfig b/drivers/leds/Kconfig
+index b784bb7..68e8380 100644
+--- a/drivers/leds/Kconfig
++++ b/drivers/leds/Kconfig
+@@ -417,6 +417,18 @@ config LEDS_LP3952
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called leds-lp3952.
+ 
++config LEDS_LP5817
++	tristate "LED support for TI LP5817"
++	depends on LEDS_CLASS && I2C && OF
++	select REGMAP_I2C
++	help
++	  Enable support for the TI LP5817 three-channel I2C LED driver.
++	  Each connected output has independent PWM brightness control and
++	  a board-defined peak current limit.
++
++	  To compile this driver as a module, choose M here. The module
++	  will be called leds-lp5817.
++
+ config LEDS_LP50XX
+ 	tristate "LED Support for TI LP5036/30/24/18/12/09 LED driver chip"
+ 	depends on LEDS_CLASS && REGMAP_I2C
+diff --git a/drivers/leds/Makefile b/drivers/leds/Makefile
+index 18afbb5..f1db66c 100644
+--- a/drivers/leds/Makefile
++++ b/drivers/leds/Makefile
+@@ -49,6 +49,7 @@ obj-$(CONFIG_LEDS_LOCOMO)		+= leds-locomo.o
+ obj-$(CONFIG_LEDS_LP3944)		+= leds-lp3944.o
+ obj-$(CONFIG_LEDS_LP3952)		+= leds-lp3952.o
+ obj-$(CONFIG_LEDS_LP50XX)		+= leds-lp50xx.o
++obj-$(CONFIG_LEDS_LP5817)		+= leds-lp5817.o
+ obj-$(CONFIG_LEDS_LP5521)		+= leds-lp5521.o
+ obj-$(CONFIG_LEDS_LP5523)		+= leds-lp5523.o
+ obj-$(CONFIG_LEDS_LP5562)		+= leds-lp5562.o
+diff --git a/drivers/leds/leds-lp5817.c b/drivers/leds/leds-lp5817.c
+new file mode 100644
+index 0000000..2146fcf
+--- /dev/null
++++ b/drivers/leds/leds-lp5817.c
+@@ -0,0 +1,335 @@
++// SPDX-License-Identifier: GPL-2.0-only
++
++#include <linux/bitops.h>
++#include <linux/delay.h>
++#include <linux/i2c.h>
++#include <linux/leds.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/pm.h>
++#include <linux/property.h>
++#include <linux/regmap.h>
++
++#define LP5817_CHIP_EN			0x00
++#define LP5817_DEV_CONFIG0		0x01
++#define LP5817_DEV_CONFIG1		0x02
++#define LP5817_DEV_CONFIG2		0x03
++#define LP5817_DEV_CONFIG3		0x04
++#define LP5817_UPDATE_CMD		0x0f
++#define LP5817_UPDATE			0x55
++#define LP5817_FLAG_CLR			0x13
++#define LP5817_OUT_DC(n)		(0x14 + (n))
++#define LP5817_OUT_PWM(n)		(0x18 + (n))
++#define LP5817_FLAG			0x40
++
++#define LP5817_POR			BIT(0)
++#define LP5817_TSD			BIT(1)
++#define LP5817_NUM_OUTPUTS		3
++#define LP5817_MAX_BRIGHTNESS		255
++/* Low current range: 25.5 mA full scale. */
++#define LP5817_CURRENT_STEP_UA		100
++#define LP5817_MAX_CURRENT_UA		20000
++#define LP5817_DEFAULT_CURRENT_UA	5000
++
++struct lp5817;
++
++struct lp5817_led {
++	struct led_classdev cdev;
++	struct lp5817 *chip;
++	unsigned int output;
++};
++
++struct lp5817 {
++	struct device *dev;
++	struct regmap *regmap;
++	struct mutex lock; /* Serializes I2C sequences and power state. */
++	struct lp5817_led leds[LP5817_NUM_OUTPUTS];
++	u8 dc[LP5817_NUM_OUTPUTS];
++	unsigned int outputs;
++	bool configured;
++	bool suspended;
++};
++
++static int lp5817_disable(struct lp5817 *chip)
++{
++	chip->configured = false;
++
++	return regmap_write(chip->regmap, LP5817_CHIP_EN, 0);
++}
++
++static int lp5817_configure(struct lp5817 *chip)
++{
++	unsigned int output, flags;
++	int ret;
++
++	/* The chip can still be powered after a warm reboot. */
++	ret = lp5817_disable(chip);
++	if (ret)
++		return ret;
++
++	/* Clear stale PWM before enabling the chip or latching outputs. */
++	for (output = 0; output < LP5817_NUM_OUTPUTS; output++) {
++		ret = regmap_write(chip->regmap, LP5817_OUT_PWM(output), 0);
++		if (ret)
++			return ret;
++	}
++
++	ret = regmap_write(chip->regmap, LP5817_CHIP_EN, 1);
++	if (ret)
++		goto disable;
++
++	ret = regmap_write(chip->regmap, LP5817_DEV_CONFIG0, 0);
++	if (ret)
++		goto disable;
++
++	ret = regmap_write(chip->regmap, LP5817_DEV_CONFIG1, chip->outputs);
++	if (ret)
++		goto disable;
++
++	ret = regmap_write(chip->regmap, LP5817_DEV_CONFIG2, 0);
++	if (ret)
++		goto disable;
++
++	ret = regmap_write(chip->regmap, LP5817_DEV_CONFIG3, 0);
++	if (ret)
++		goto disable;
++
++	for (output = 0; output < LP5817_NUM_OUTPUTS; output++) {
++		ret = regmap_write(chip->regmap, LP5817_OUT_DC(output), chip->dc[output]);
++		if (ret)
++			goto disable;
++	}
++
++	ret = regmap_write(chip->regmap, LP5817_UPDATE_CMD, LP5817_UPDATE);
++	if (ret)
++		goto disable;
++
++	ret = regmap_read(chip->regmap, LP5817_FLAG, &flags);
++	if (ret)
++		goto disable;
++
++	if (flags & LP5817_TSD)
++		dev_warn(chip->dev, "LED driver has entered thermal shutdown\n");
++
++	ret = regmap_write(chip->regmap, LP5817_FLAG_CLR, flags & (LP5817_POR | LP5817_TSD));
++	if (ret)
++		goto disable;
++
++	chip->configured = true;
++
++	return 0;
++
++disable:
++	lp5817_disable(chip);
++	return ret;
++}
++
++static int lp5817_brightness_set(struct led_classdev *cdev,
++				 enum led_brightness brightness)
++{
++	struct lp5817_led *led = container_of(cdev, struct lp5817_led, cdev);
++	struct lp5817 *chip = led->chip;
++	unsigned int flags;
++	int ret;
++
++	mutex_lock(&chip->lock);
++
++	if (chip->suspended) {
++		ret = brightness == LED_OFF ? 0 : -EBUSY;
++		goto unlock;
++	}
++
++	ret = regmap_read(chip->regmap, LP5817_FLAG, &flags);
++	if (ret)
++		goto unlock;
++
++	if (!chip->configured || (flags & LP5817_POR)) {
++		ret = lp5817_configure(chip);
++		if (ret)
++			goto unlock;
++	} else if (flags & LP5817_TSD) {
++		dev_warn_ratelimited(chip->dev, "LED driver has entered thermal shutdown\n");
++		ret = regmap_write(chip->regmap, LP5817_FLAG_CLR, LP5817_TSD);
++		if (ret && brightness != LED_OFF)
++			goto unlock;
++	}
++
++	ret = regmap_write(chip->regmap, LP5817_OUT_PWM(led->output), brightness);
++
++unlock:
++	mutex_unlock(&chip->lock);
++	return ret;
++}
++
++static enum led_brightness lp5817_brightness_get(struct led_classdev *cdev)
++{
++	struct lp5817_led *led = container_of(cdev, struct lp5817_led, cdev);
++	struct lp5817 *chip = led->chip;
++	unsigned int brightness = LED_OFF;
++	int ret = 0;
++
++	mutex_lock(&chip->lock);
++	if (chip->configured && !chip->suspended)
++		ret = regmap_read(chip->regmap, LP5817_OUT_PWM(led->output), &brightness);
++	mutex_unlock(&chip->lock);
++
++	return ret ? ret : (int)brightness;
++}
++
++static void lp5817_power_off(void *data)
++{
++	struct lp5817 *chip = data;
++
++	mutex_lock(&chip->lock);
++	chip->suspended = true;
++	if (lp5817_disable(chip))
++		dev_warn(chip->dev, "Failed to disable LED outputs\n");
++	mutex_unlock(&chip->lock);
++}
++
++static int lp5817_probe(struct i2c_client *client)
++{
++	static const struct regmap_config regmap_config = {
++		.reg_bits = 8,
++		.val_bits = 8,
++		.max_register = LP5817_FLAG,
++	};
++	struct device *dev = &client->dev;
++	unsigned int output, current_ua;
++	u8 initial_pwm[LP5817_NUM_OUTPUTS] = {};
++	struct lp5817 *chip;
++	int ret;
++
++	chip = devm_kzalloc(dev, sizeof(*chip), GFP_KERNEL);
++	if (!chip)
++		return -ENOMEM;
++
++	chip->dev = dev;
++	mutex_init(&chip->lock);
++	i2c_set_clientdata(client, chip);
++
++	chip->regmap = devm_regmap_init_i2c(client, &regmap_config);
++	if (IS_ERR(chip->regmap))
++		return PTR_ERR(chip->regmap);
++
++	device_for_each_child_node_scoped(dev, child) {
++		ret = fwnode_property_read_u32(child, "reg", &output);
++		if (ret || output >= LP5817_NUM_OUTPUTS || (chip->outputs & BIT(output)))
++			return dev_err_probe(dev, -EINVAL, "Invalid or duplicate LED output\n");
++
++		current_ua = LP5817_DEFAULT_CURRENT_UA;
++		if (fwnode_property_present(child, "led-max-microamp")) {
++			ret = fwnode_property_read_u32(child, "led-max-microamp", &current_ua);
++			if (ret)
++				return dev_err_probe(dev, ret, "Invalid current property for OUT%u\n",
++						     output);
++		}
++
++		if (current_ua < LP5817_CURRENT_STEP_UA || current_ua > LP5817_MAX_CURRENT_UA)
++			return dev_err_probe(dev, -EINVAL, "Invalid current limit for OUT%u\n",
++					     output);
++
++		chip->outputs |= BIT(output);
++		chip->dc[output] = current_ua / LP5817_CURRENT_STEP_UA;
++		if (led_init_default_state_get(child) == LEDS_DEFSTATE_ON)
++			initial_pwm[output] = LP5817_MAX_BRIGHTNESS;
++	}
++
++	if (!chip->outputs)
++		return dev_err_probe(dev, -EINVAL, "No LED outputs described\n");
++
++	/* TI recommends waiting about 1 ms after VCC comes up. */
++	fsleep(1000);
++	ret = lp5817_configure(chip);
++	if (ret)
++		return dev_err_probe(dev, ret, "Failed to initialize LED outputs\n");
++
++	ret = devm_add_action_or_reset(dev, lp5817_power_off, chip);
++	if (ret)
++		return ret;
++
++	/* Set initial brightness before publishing the LED class devices. */
++	for (output = 0; output < LP5817_NUM_OUTPUTS; output++) {
++		if (!initial_pwm[output])
++			continue;
++
++		ret = regmap_write(chip->regmap, LP5817_OUT_PWM(output), initial_pwm[output]);
++		if (ret)
++			return dev_err_probe(dev, ret, "Failed to set initial brightness for OUT%u\n",
++					     output);
++	}
++
++	device_for_each_child_node_scoped(dev, child) {
++		struct led_init_data init_data = { .fwnode = child };
++		struct lp5817_led *led;
++
++		fwnode_property_read_u32(child, "reg", &output);
++		led = &chip->leds[output];
++		led->chip = chip;
++		led->output = output;
++		led->cdev.max_brightness = LP5817_MAX_BRIGHTNESS;
++		led->cdev.brightness_set_blocking = lp5817_brightness_set;
++		led->cdev.brightness_get = lp5817_brightness_get;
++
++		ret = devm_led_classdev_register_ext(dev, &led->cdev, &init_data);
++		if (ret)
++			return dev_err_probe(dev, ret, "Failed to register OUT%u\n", output);
++	}
++
++	return 0;
++}
++
++static void lp5817_shutdown(struct i2c_client *client)
++{
++	lp5817_power_off(i2c_get_clientdata(client));
++}
++
++static int lp5817_suspend(struct device *dev)
++{
++	struct lp5817 *chip = dev_get_drvdata(dev);
++	int ret;
++
++	mutex_lock(&chip->lock);
++	ret = lp5817_disable(chip);
++	if (!ret)
++		chip->suspended = true;
++	mutex_unlock(&chip->lock);
++
++	return ret;
++}
++
++static int lp5817_resume(struct device *dev)
++{
++	struct lp5817 *chip = dev_get_drvdata(dev);
++	int ret;
++
++	mutex_lock(&chip->lock);
++	ret = lp5817_configure(chip);
++	chip->suspended = false;
++	mutex_unlock(&chip->lock);
++
++	return ret;
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(lp5817_pm_ops, lp5817_suspend, lp5817_resume);
++
++static const struct of_device_id lp5817_of_match[] = {
++	{ .compatible = "ti,lp5817" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, lp5817_of_match);
++
++static struct i2c_driver lp5817_driver = {
++	.driver = {
++		.name = "lp5817",
++		.of_match_table = lp5817_of_match,
++		.pm = pm_sleep_ptr(&lp5817_pm_ops),
++	},
++	.probe = lp5817_probe,
++	.shutdown = lp5817_shutdown,
++};
++module_i2c_driver(lp5817_driver);
++
++MODULE_DESCRIPTION("TI LP5817 LED driver");
++MODULE_LICENSE("GPL");
+-- 
+2.43.0
+

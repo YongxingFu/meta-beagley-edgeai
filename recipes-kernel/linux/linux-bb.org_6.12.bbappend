@@ -55,3 +55,15 @@ addtask validate_beagley_memory after do_compile before do_install do_deploy
 SRC_URI:append:beagley-ai = " file://ox08d10.cfg"
 KERNEL_CONFIG_FRAGMENTS:append:beagley-ai = " ${WORKDIR}/ox08d10.cfg"
 KERNEL_DEVICETREE:append:beagley-ai = " ti/k3-am67a-beagley-ai-ox08d10.dtbo"
+
+SRC_URI:append:beagley-ai = " file://0001-leds-add-ti-lp5817.patch file://lp5817.cfg file://k3-am67a-beagley-ai-lp5817.dtso"
+KERNEL_CONFIG_FRAGMENTS:append:beagley-ai = " ${WORKDIR}/lp5817.cfg"
+KERNEL_DEVICETREE:append:beagley-ai = " ti/k3-am67a-beagley-ai-lp5817.dtbo"
+
+do_configure:prepend:beagley-ai() {
+    install -m 0644 ${WORKDIR}/k3-am67a-beagley-ai-lp5817.dtso ${S}/arch/arm64/boot/dts/ti/
+    if ! grep -q 'k3-am67a-beagley-ai-lp5817.dtbo' ${S}/arch/arm64/boot/dts/ti/Makefile; then
+        printf '%s\n' 'dtb-$(CONFIG_ARCH_K3) += k3-am67a-beagley-ai-lp5817.dtbo' >> ${S}/arch/arm64/boot/dts/ti/Makefile
+    fi
+    fi
+}

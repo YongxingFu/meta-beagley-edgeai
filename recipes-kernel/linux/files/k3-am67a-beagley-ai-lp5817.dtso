@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/dts-v1/;
+/plugin/;
+
+&mcu_i2c0 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	led-controller@2d {
+		compatible = "ti,lp5817";
+		reg = <0x2d>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		/* Bench setup: both outputs start at full PWM duty and 5 mA. */
+		led@0 {
+			reg = <0>;
+			label = "illumination:cn1";
+			led-max-microamp = <5000>;
+			default-state = "on";
+		};
+
+		led@1 {
+			reg = <1>;
+			label = "illumination:cn2";
+			led-max-microamp = <5000>;
+			default-state = "on";
+		};
+	};
+};
