@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/dts-v1/;
+/plugin/;
+
+#include <dt-bindings/gpio/gpio.h>
+
+&{/} {
+	focus-actuator {
+		compatible = "ti,drv8834-stepper";
+		pinctrl-names = "default";
+		pinctrl-0 = <&hat_08_gpio &hat_10_gpio &hat_16_gpio
+			     &hat_18_gpio &hat_29_gpio_pd &hat_33_gpio
+			     &hat_35_gpio_pu &hat_37_gpio>;
+
+		direction-gpios = <&main_gpio1 14 GPIO_ACTIVE_HIGH>;
+		config-gpios = <&main_gpio1 13 GPIO_ACTIVE_HIGH>;
+		m0-gpios = <&mcu_gpio0 7 GPIO_ACTIVE_HIGH>;
+		m1-gpios = <&mcu_gpio0 10 GPIO_ACTIVE_HIGH>;
+		step-gpios = <&main_gpio1 15 GPIO_ACTIVE_HIGH>;
+		/* Board net GPIO_DRVDELCAY_B is wired to the chip's ADECAY. */
+		adecay-gpios = <&main_gpio1 18 GPIO_ACTIVE_HIGH>;
+		enable-gpios = <&main_gpio1 12 GPIO_ACTIVE_LOW>;
+		sleep-gpios = <&main_gpio0 36 GPIO_ACTIVE_LOW>;
+	};
+};

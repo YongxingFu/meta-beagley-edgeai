@@ -1,0 +1,593 @@
+Subject: [PATCH] misc: add TI DRV8834 STEP/DIR actuator
+
+Provide finite, cancellable relative moves for the BeagleY-AI
+focus actuator and report the number of STEP edges generated.
+
+Upstream-Status: Inappropriate [project-specific userspace ABI]
+
+diff --git a/Documentation/devicetree/bindings/misc/ti,drv8834-stepper.yaml b/Documentation/devicetree/bindings/misc/ti,drv8834-stepper.yaml
+new file mode 100644
+--- /dev/null
++++ b/Documentation/devicetree/bindings/misc/ti,drv8834-stepper.yaml
+@@ -0,0 +1,64 @@
++# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/misc/ti,drv8834-stepper.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: Texas Instruments DRV8834 STEP/DIR stepper motor controller
++
++maintainers:
++  - BeagleBoard.org Linux Kernel Mailing List <beagleboard@googlegroups.com>
++
++description: |
++  Dual H-bridge driver configured in indexer mode to drive one bipolar
++  stepper motor. The host generates STEP and DIR and selects the step mode
++  and decay mode using GPIOs.
++
++properties:
++  compatible:
++    const: ti,drv8834-stepper
++
++  step-gpios:
++    maxItems: 1
++    description: STEP input, typically active high.
++
++  direction-gpios:
++    maxItems: 1
++    description: DIR input. Polarity determines the positive direction.
++
++  enable-gpios:
++    maxItems: 1
++    description: Active-low nENBL output-enable input.
++
++  sleep-gpios:
++    maxItems: 1
++    description: Active-low nSLEEP input, asserted during sleep.
++
++  config-gpios:
++    maxItems: 1
++    description: CONFIG mode input, driven high for indexer mode.
++
++  m0-gpios:
++    maxItems: 1
++    description: M0 microstep mode input.
++
++  m1-gpios:
++    maxItems: 1
++    description: M1 microstep mode input.
++
++  adecay-gpios:
++    maxItems: 1
++    description: ADECAY input, selecting the decay mode for both bridges.
++
++required:
++  - compatible
++  - step-gpios
++  - direction-gpios
++  - enable-gpios
++  - sleep-gpios
++  - config-gpios
++  - m0-gpios
++  - m1-gpios
++  - adecay-gpios
++
++additionalProperties: false
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -627,6 +627,16 @@
+ 
+ 	  This is used to provide firmware management capabilities for MSPM0 using
+ 	  BSL over I2C.
++
++config TI_DRV8834_STEPPER
++	tristate "TI DRV8834 STEP/DIR stepper controller"
++	depends on GPIOLIB && HIGH_RES_TIMERS
++	help
++	  Control a DRV8834 bipolar stepper motor driver using GPIOs.
++	  Exposes finite relative moves, stop and status through a misc device.
++
++	  Enable this for boards that wire DRV8834 control inputs to GPIOs
++	  and use the hardware indexer for one bipolar actuator.
+ 
+ source "drivers/misc/c2port/Kconfig"
+ source "drivers/misc/eeprom/Kconfig"
+diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
+--- a/drivers/misc/Makefile
++++ b/drivers/misc/Makefile
+@@ -74,3 +74,4 @@
+ obj-$(CONFIG_MARVELL_CN10K_DPI)	+= mrvl_cn10k_dpi.o
+ obj-y				+= keba/
+ obj-$(CONFIG_MSPM0_I2C)		+= mspm0-i2c.o
++obj-$(CONFIG_TI_DRV8834_STEPPER)	+= drv8834.o
+diff --git a/drivers/misc/drv8834.c b/drivers/misc/drv8834.c
+new file mode 100644
+--- /dev/null
++++ b/drivers/misc/drv8834.c
+@@ -0,0 +1,445 @@
++// SPDX-License-Identifier: GPL-2.0-only
++#include <linux/compat.h>
++#include <linux/delay.h>
++#include <linux/fs.h>
++#include <linux/gpio/consumer.h>
++#include <linux/hrtimer.h>
++#include <linux/kref.h>
++#include <linux/miscdevice.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/poll.h>
++#include <linux/slab.h>
++#include <linux/uaccess.h>
++#include <uapi/linux/drv8834.h>
++
++/* Conservative bench limits, pending validation with the lens mechanism. */
++#define DRV8834_MAX_STEPS	128
++#define DRV8834_MIN_RATE_HZ	50
++#define DRV8834_MAX_RATE_HZ	1500
++#define DRV8834_STEP_HIGH_NS	(5 * NSEC_PER_USEC)
++#define DRV8834_DIR_SETUP_NS	(10 * NSEC_PER_USEC)
++#define DRV8834_HOLD_NS		(500 * NSEC_PER_MSEC)
++
++struct drv8834 {
++	struct miscdevice misc;
++	struct kref ref;
++	struct gpio_desc *step;
++	struct gpio_desc *dir;
++	struct gpio_desc *enable;
++	struct gpio_desc *sleep;
++	struct hrtimer timer;
++	/* Serialize ioctls, open/close and power transitions. */
++	struct mutex mutex;
++	/* Protect the state shared with the timer and poll. */
++	spinlock_t lock;
++	wait_queue_head_t wait;
++	struct drv8834_status status;
++	unsigned int remaining;
++	unsigned int period_ns;
++	int direction;
++	bool step_high;
++	ktime_t hold_until;
++	bool event_pending;
++	bool online;
++	bool suspended;
++	bool opened;
++};
++
++static void drv8834_finish(struct drv8834 *motor, enum drv8834_state state)
++{
++	lockdep_assert_held(&motor->lock);
++
++	motor->status.state = state;
++	motor->hold_until = ktime_add_ns(ktime_get(), DRV8834_HOLD_NS);
++	motor->event_pending = true;
++	wake_up_interruptible(&motor->wait);
++}
++
++static void drv8834_disable(struct drv8834 *motor)
++{
++	lockdep_assert_held(&motor->lock);
++
++	gpiod_set_value(motor->enable, 0);
++	motor->status.energized = 0;
++}
++
++static enum hrtimer_restart drv8834_tick(struct hrtimer *timer)
++{
++	struct drv8834 *motor = container_of(timer, struct drv8834, timer);
++	unsigned long flags;
++	unsigned int delay_ns;
++
++	spin_lock_irqsave(&motor->lock, flags);
++	if (motor->status.state != DRV8834_MOVING) {
++		drv8834_disable(motor);
++		spin_unlock_irqrestore(&motor->lock, flags);
++		return HRTIMER_NORESTART;
++	}
++
++	if (!motor->step_high) {
++		gpiod_set_value(motor->step, 1);
++		motor->step_high = true;
++		motor->status.emitted_steps += motor->direction;
++		motor->remaining--;
++		delay_ns = DRV8834_STEP_HIGH_NS;
++	} else {
++		gpiod_set_value(motor->step, 0);
++		motor->step_high = false;
++		if (!motor->remaining) {
++			drv8834_finish(motor, DRV8834_COMPLETE);
++			hrtimer_set_expires(timer, motor->hold_until);
++			spin_unlock_irqrestore(&motor->lock, flags);
++			return HRTIMER_RESTART;
++		}
++		delay_ns = motor->period_ns - DRV8834_STEP_HIGH_NS;
++	}
++
++	/* Base the delay on the edge just emitted, including after a late tick. */
++	hrtimer_set_expires(timer, ktime_add_ns(ktime_get(), delay_ns));
++	spin_unlock_irqrestore(&motor->lock, flags);
++	return HRTIMER_RESTART;
++}
++
++/* Stop in process context with the mutex held. Preserve a full high pulse. */
++static void drv8834_stop(struct drv8834 *motor, bool release)
++{
++	unsigned long flags;
++
++	hrtimer_cancel(&motor->timer);
++	if (motor->step_high)
++		udelay(DRV8834_STEP_HIGH_NS / NSEC_PER_USEC);
++
++	spin_lock_irqsave(&motor->lock, flags);
++	gpiod_set_value(motor->step, 0);
++	motor->step_high = false;
++	if (motor->status.state == DRV8834_MOVING)
++		drv8834_finish(motor, DRV8834_STOPPED);
++
++	if (release || ktime_compare(motor->hold_until, ktime_get()) <= 0)
++		drv8834_disable(motor);
++	else if (motor->status.energized)
++		hrtimer_start(&motor->timer, motor->hold_until, HRTIMER_MODE_ABS);
++	spin_unlock_irqrestore(&motor->lock, flags);
++}
++
++static int drv8834_jog(struct drv8834 *motor, const struct drv8834_jog *jog)
++{
++	unsigned long flags;
++
++	if (!jog->steps || jog->steps < -DRV8834_MAX_STEPS ||
++	    jog->steps > DRV8834_MAX_STEPS ||
++	    jog->rate_hz < DRV8834_MIN_RATE_HZ ||
++	    jog->rate_hz > DRV8834_MAX_RATE_HZ)
++		return -EINVAL;
++
++	spin_lock_irqsave(&motor->lock, flags);
++	if (motor->status.state == DRV8834_MOVING) {
++		spin_unlock_irqrestore(&motor->lock, flags);
++		return -EBUSY;
++	}
++	spin_unlock_irqrestore(&motor->lock, flags);
++
++	/* Synchronize with any pending idle hold expiration. */
++	hrtimer_cancel(&motor->timer);
++	gpiod_set_value_cansleep(motor->dir, jog->steps > 0);
++	spin_lock_irqsave(&motor->lock, flags);
++	gpiod_set_value(motor->enable, 1);
++	motor->status = (struct drv8834_status) {
++		.state = DRV8834_MOVING,
++		.requested_steps = jog->steps,
++		.energized = 1,
++	};
++	motor->event_pending = false;
++	motor->remaining = abs(jog->steps);
++	motor->direction = jog->steps > 0 ? 1 : -1;
++	motor->period_ns = NSEC_PER_SEC / jog->rate_hz;
++	hrtimer_start(&motor->timer, ns_to_ktime(DRV8834_DIR_SETUP_NS),
++		      HRTIMER_MODE_REL);
++	spin_unlock_irqrestore(&motor->lock, flags);
++
++	return 0;
++}
++
++static long drv8834_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
++{
++	struct drv8834 *motor = file->private_data;
++	void __user *user = (void __user *)arg;
++	struct drv8834_status status;
++	struct drv8834_jog jog;
++	unsigned long flags;
++	bool pending;
++	long ret = 0;
++
++	mutex_lock(&motor->mutex);
++	if (!motor->online || motor->suspended) {
++		ret = -ENODEV;
++		goto unlock;
++	}
++
++	switch (cmd) {
++	case DRV8834_IOC_JOG:
++		if (copy_from_user(&jog, user, sizeof(jog)))
++			ret = -EFAULT;
++		else
++			ret = drv8834_jog(motor, &jog);
++		break;
++	case DRV8834_IOC_STOP:
++		drv8834_stop(motor, false);
++		break;
++	case DRV8834_IOC_STATUS:
++		spin_lock_irqsave(&motor->lock, flags);
++		status = motor->status;
++		pending = motor->event_pending;
++		spin_unlock_irqrestore(&motor->lock, flags);
++
++		if (copy_to_user(user, &status, sizeof(status))) {
++			ret = -EFAULT;
++		} else if (pending) {
++			/* A terminal result cannot change until the next ioctl. */
++			spin_lock_irqsave(&motor->lock, flags);
++			motor->event_pending = false;
++			spin_unlock_irqrestore(&motor->lock, flags);
++		}
++		break;
++	default:
++		ret = -ENOTTY;
++		break;
++	}
++
++unlock:
++	mutex_unlock(&motor->mutex);
++	return ret;
++}
++
++static __poll_t drv8834_poll(struct file *file, poll_table *wait)
++{
++	struct drv8834 *motor = file->private_data;
++	unsigned long flags;
++	__poll_t events = 0;
++
++	poll_wait(file, &motor->wait, wait);
++	spin_lock_irqsave(&motor->lock, flags);
++	if (!motor->online || motor->suspended)
++		events = EPOLLERR | EPOLLHUP;
++	else if (motor->event_pending)
++		events = EPOLLIN | EPOLLRDNORM;
++	spin_unlock_irqrestore(&motor->lock, flags);
++
++	return events;
++}
++
++static void drv8834_free(struct kref *ref)
++{
++	kfree(container_of(ref, struct drv8834, ref));
++}
++
++static void drv8834_put(void *data)
++{
++	struct drv8834 *motor = data;
++
++	kref_put(&motor->ref, drv8834_free);
++}
++
++static int drv8834_open(struct inode *inode, struct file *file)
++{
++	struct drv8834 *motor = container_of(file->private_data, struct drv8834,
++					     misc);
++	unsigned long flags;
++	int ret = 0;
++
++	mutex_lock(&motor->mutex);
++	if (!motor->online || motor->suspended)
++		ret = -ENODEV;
++	else if (motor->opened)
++		ret = -EBUSY;
++	else {
++		kref_get(&motor->ref);
++		motor->opened = true;
++		file->private_data = motor;
++		spin_lock_irqsave(&motor->lock, flags);
++		motor->status = (struct drv8834_status) { .state = DRV8834_IDLE };
++		motor->event_pending = false;
++		spin_unlock_irqrestore(&motor->lock, flags);
++	}
++	mutex_unlock(&motor->mutex);
++
++	return ret ?: nonseekable_open(inode, file);
++}
++
++static int drv8834_release(struct inode *inode, struct file *file)
++{
++	struct drv8834 *motor = file->private_data;
++
++	mutex_lock(&motor->mutex);
++	if (motor->online && !motor->suspended)
++		drv8834_stop(motor, true);
++	motor->opened = false;
++	mutex_unlock(&motor->mutex);
++	drv8834_put(motor);
++
++	return 0;
++}
++
++static const struct file_operations drv8834_fops = {
++	.owner = THIS_MODULE,
++	.open = drv8834_open,
++	.release = drv8834_release,
++	.unlocked_ioctl = drv8834_ioctl,
++	.compat_ioctl = compat_ptr_ioctl,
++	.poll = drv8834_poll,
++};
++
++static void drv8834_wake(struct drv8834 *motor)
++{
++	gpiod_set_value_cansleep(motor->sleep, 0);
++	fsleep(1000);
++}
++
++static int drv8834_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct gpio_desc *gpio;
++	struct drv8834 *motor;
++	int ret;
++
++	motor = kzalloc(sizeof(*motor), GFP_KERNEL);
++	if (!motor)
++		return -ENOMEM;
++
++	kref_init(&motor->ref);
++	ret = devm_add_action_or_reset(dev, drv8834_put, motor);
++	if (ret)
++		return ret;
++
++	/* Hold the chip in sleep while its strap inputs are configured. */
++	motor->sleep = devm_gpiod_get(dev, "sleep", GPIOD_OUT_HIGH);
++	if (IS_ERR(motor->sleep))
++		return dev_err_probe(dev, PTR_ERR(motor->sleep), "sleep GPIO\n");
++	motor->enable = devm_gpiod_get(dev, "enable", GPIOD_OUT_LOW);
++	if (IS_ERR(motor->enable))
++		return dev_err_probe(dev, PTR_ERR(motor->enable), "enable GPIO\n");
++	motor->step = devm_gpiod_get(dev, "step", GPIOD_OUT_LOW);
++	if (IS_ERR(motor->step))
++		return dev_err_probe(dev, PTR_ERR(motor->step), "STEP GPIO\n");
++	motor->dir = devm_gpiod_get(dev, "direction", GPIOD_OUT_LOW);
++	if (IS_ERR(motor->dir))
++		return dev_err_probe(dev, PTR_ERR(motor->dir), "DIR GPIO\n");
++
++	if (gpiod_cansleep(motor->step) || gpiod_cansleep(motor->enable))
++		return dev_err_probe(dev, -EINVAL, "STEP and enable GPIOs must be atomic\n");
++
++	gpio = devm_gpiod_get(dev, "config", GPIOD_OUT_HIGH);
++	if (IS_ERR(gpio))
++		return dev_err_probe(dev, PTR_ERR(gpio), "CONFIG GPIO\n");
++
++	/* M1=1, M0=0 selects 1/8 stepping; ADECAY=0 selects slow decay. */
++	gpio = devm_gpiod_get(dev, "m0", GPIOD_OUT_LOW);
++	if (IS_ERR(gpio))
++		return dev_err_probe(dev, PTR_ERR(gpio), "M0 GPIO\n");
++	gpio = devm_gpiod_get(dev, "m1", GPIOD_OUT_HIGH);
++	if (IS_ERR(gpio))
++		return dev_err_probe(dev, PTR_ERR(gpio), "M1 GPIO\n");
++	gpio = devm_gpiod_get(dev, "adecay", GPIOD_OUT_LOW);
++	if (IS_ERR(gpio))
++		return dev_err_probe(dev, PTR_ERR(gpio), "ADECAY GPIO\n");
++
++	mutex_init(&motor->mutex);
++	spin_lock_init(&motor->lock);
++	init_waitqueue_head(&motor->wait);
++	hrtimer_init(&motor->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
++	motor->timer.function = drv8834_tick;
++	motor->misc = (struct miscdevice) {
++		.minor = MISC_DYNAMIC_MINOR,
++		.name = "drv8834-focus",
++		.fops = &drv8834_fops,
++		.parent = dev,
++		.mode = 0600,
++	};
++
++	platform_set_drvdata(pdev, motor);
++	drv8834_wake(motor);
++	motor->online = true;
++	ret = misc_register(&motor->misc);
++	if (ret)
++		gpiod_set_value_cansleep(motor->sleep, 1);
++
++	return ret;
++}
++
++static void drv8834_power_down(struct drv8834 *motor, bool offline)
++{
++	unsigned long flags;
++
++	mutex_lock(&motor->mutex);
++	spin_lock_irqsave(&motor->lock, flags);
++	if (offline)
++		motor->online = false;
++	else
++		motor->suspended = true;
++	spin_unlock_irqrestore(&motor->lock, flags);
++	drv8834_stop(motor, true);
++	gpiod_set_value_cansleep(motor->sleep, 1);
++	wake_up_interruptible(&motor->wait);
++	mutex_unlock(&motor->mutex);
++}
++
++static void drv8834_remove(struct platform_device *pdev)
++{
++	struct drv8834 *motor = platform_get_drvdata(pdev);
++
++	misc_deregister(&motor->misc);
++	drv8834_power_down(motor, true);
++}
++
++static void drv8834_shutdown(struct platform_device *pdev)
++{
++	drv8834_power_down(platform_get_drvdata(pdev), true);
++}
++
++static int drv8834_suspend(struct device *dev)
++{
++	drv8834_power_down(dev_get_drvdata(dev), false);
++	return 0;
++}
++
++static int drv8834_resume(struct device *dev)
++{
++	struct drv8834 *motor = dev_get_drvdata(dev);
++	unsigned long flags;
++
++	mutex_lock(&motor->mutex);
++	drv8834_wake(motor);
++	spin_lock_irqsave(&motor->lock, flags);
++	motor->suspended = false;
++	spin_unlock_irqrestore(&motor->lock, flags);
++	wake_up_interruptible(&motor->wait);
++	mutex_unlock(&motor->mutex);
++
++	return 0;
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(drv8834_pm_ops, drv8834_suspend, drv8834_resume);
++
++static const struct of_device_id drv8834_of_match[] = {
++	{ .compatible = "ti,drv8834-stepper" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, drv8834_of_match);
++
++static struct platform_driver drv8834_driver = {
++	.probe = drv8834_probe,
++	.remove = drv8834_remove,
++	.shutdown = drv8834_shutdown,
++	.driver = {
++		.name = "drv8834-stepper",
++		.of_match_table = drv8834_of_match,
++		.pm = pm_sleep_ptr(&drv8834_pm_ops),
++	},
++};
++module_platform_driver(drv8834_driver);
++
++MODULE_DESCRIPTION("TI DRV8834 STEP/DIR focus motor controller");
++MODULE_LICENSE("GPL");
+diff --git a/include/uapi/linux/drv8834.h b/include/uapi/linux/drv8834.h
+new file mode 100644
+--- /dev/null
++++ b/include/uapi/linux/drv8834.h
+@@ -0,0 +1,34 @@
++/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
++#ifndef _UAPI_LINUX_DRV8834_H
++#define _UAPI_LINUX_DRV8834_H
++
++#include <linux/ioctl.h>
++#include <linux/types.h>
++
++/* Signed microstep count and pulse rate in steps per second. */
++struct drv8834_jog {
++	__s32 steps;
++	__u32 rate_hz;
++};
++
++enum drv8834_state {
++	DRV8834_IDLE,
++	DRV8834_MOVING,
++	DRV8834_COMPLETE,
++	DRV8834_STOPPED,
++};
++
++/* emitted_steps counts signed STEP edges, independent of shaft motion. */
++struct drv8834_status {
++	__u32 state;
++	__s32 requested_steps;
++	__s32 emitted_steps;
++	__u32 energized;
++};
++
++/* STATUS acknowledges a pending completion or stop notification. */
++#define DRV8834_IOC_JOG		_IOW('F', 0x80, struct drv8834_jog)
++#define DRV8834_IOC_STOP	_IO('F', 0x81)
++#define DRV8834_IOC_STATUS	_IOR('F', 0x82, struct drv8834_status)
++
++#endif
